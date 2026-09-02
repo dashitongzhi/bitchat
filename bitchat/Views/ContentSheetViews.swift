@@ -488,6 +488,14 @@ private struct ContentPrivateChatSheetView: View {
     #endif
 
     var body: some View {
+        if theme.usesGlassChrome {
+            iMessageBody
+        } else {
+            legacyBody
+        }
+    }
+
+    private var legacyBody: some View {
         VStack(spacing: 0) {
             if let headerState = privateConversationModel.selectedHeaderState {
                 HStack(spacing: 12) {
@@ -522,7 +530,6 @@ private struct ContentPrivateChatSheetView: View {
                                 Image(systemName: headerState.isFavorite ? "star.fill" : "star")
                                     .font(.bitchatSystem(size: 14))
                                     .foregroundColor(headerState.isFavorite ? Color.yellow : palette.primary)
-                                    // Same visual box + 44pt hit target as SheetCloseButton.
                                     .frame(width: 32, height: 32)
                                     .contentShape(Rectangle().inset(by: -6))
                             }
@@ -545,8 +552,6 @@ private struct ContentPrivateChatSheetView: View {
                         }
                     }
                 }
-                // minHeight so scaled text at accessibility sizes grows the
-                // bar instead of clipping inside it.
                 .frame(minHeight: headerHeight)
                 .padding(.horizontal, 16)
                 .padding(.top, 10)
@@ -554,55 +559,83 @@ private struct ContentPrivateChatSheetView: View {
                 .modifier(PrivateHeaderChrome())
             }
 
-            MessageListView(
-                privatePeer: privateConversationModel.selectedPeerID,
-                isAtBottom: $isAtBottomPrivate,
-                messageText: $messageText,
-                selectedMessageSender: $selectedMessageSender,
-                selectedMessageSenderID: $selectedMessageSenderID,
-                imagePreviewURL: $imagePreviewURL,
-                windowCountPublic: $windowCountPublic,
-                windowCountPrivate: $windowCountPrivate,
-                showSidebar: $showSidebar,
-                isTextFieldFocused: isTextFieldFocused
-            )
-            .themedSurface()
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            // Swipe-right-to-leave lives on the message list only. On the
-            // whole sheet it preempted the composer's press-and-hold mic
-            // gesture (a high-priority ancestor drag cancels child gestures
-            // within milliseconds — same starvation as the image-reveal bug).
-            .highPriorityGesture(swipeToLeaveGesture)
+            conversationMessageList
 
-            if !theme.usesGlassChrome {
-                Divider()
-            }
-
+            Divider()
             privacyCaption
-
-            #if os(iOS)
-            ContentComposerView(
-                messageText: $messageText,
-                isTextFieldFocused: isTextFieldFocused,
-                voiceRecordingVM: voiceRecordingVM,
-                autocompleteDebounceTimer: $autocompleteDebounceTimer,
-                onSendMessage: onSendMessage,
-                showImagePicker: $showImagePicker,
-                imagePickerSourceType: $imagePickerSourceType
-            )
-            #else
-            ContentComposerView(
-                messageText: $messageText,
-                isTextFieldFocused: isTextFieldFocused,
-                voiceRecordingVM: voiceRecordingVM,
-                autocompleteDebounceTimer: $autocompleteDebounceTimer,
-                onSendMessage: onSendMessage,
-                showMacImagePicker: $showMacImagePicker
-            )
-            #endif
+            composerView
         }
         .themedSheetBackground()
         .foregroundColor(palette.primary)
+    }
+
+    private var iMessageBody: some View {
+        VStack(spacing: 0) {
+            if let headerState = privateConversationModel.selectedHeaderState {
+                IMessageConversationHeader(
+                    headerState: headerState,
+                    headerHeight: headerHeight,
+                    onBack: leaveConversation
+                )
+            }
+
+            conversationMessageList
+                .background(IMessageChatBackdrop())
+
+            composerView
+        }
+        .background(IMessageChatBackdrop())
+        .foregroundColor(.white)
+    }
+
+    private var conversationMessageList: some View {
+        MessageListView(
+            privatePeer: privateConversationModel.selectedPeerID,
+            isAtBottom: $isAtBottomPrivate,
+            messageText: $messageText,
+            selectedMessageSender: $selectedMessageSender,
+            selectedMessageSenderID: $selectedMessageSenderID,
+            imagePreviewURL: $imagePreviewURL,
+            windowCountPublic: $windowCountPublic,
+            windowCountPrivate: $windowCountPrivate,
+            showSidebar: $showSidebar,
+            isTextFieldFocused: isTextFieldFocused
+        )
+        .themedSurface()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Keep the horizontal edge gesture on the timeline so the composer
+        // retains its press-and-hold voice interaction.
+        .highPriorityGesture(swipeToLeaveGesture)
+    }
+
+    @ViewBuilder
+    private var composerView: some View {
+        #if os(iOS)
+        ContentComposerView(
+            messageText: $messageText,
+            isTextFieldFocused: isTextFieldFocused,
+            voiceRecordingVM: voiceRecordingVM,
+            autocompleteDebounceTimer: $autocompleteDebounceTimer,
+            onSendMessage: onSendMessage,
+            showImagePicker: $showImagePicker,
+            imagePickerSourceType: $imagePickerSourceType
+        )
+        #else
+        ContentComposerView(
+            messageText: $messageText,
+            isTextFieldFocused: isTextFieldFocused,
+            voiceRecordingVM: voiceRecordingVM,
+            autocompleteDebounceTimer: $autocompleteDebounceTimer,
+            onSendMessage: onSendMessage,
+            showMacImagePicker: $showMacImagePicker
+        )
+        #endif
+    }
+
+    private func leaveConversation() {
+        withAnimation(.easeInOut(duration: TransportConfig.uiAnimationMediumSeconds)) {
+            privateConversationModel.endConversation()
+        }
     }
 
     private var swipeToLeaveGesture: some Gesture {
@@ -665,6 +698,248 @@ private struct ContentPrivateChatSheetView: View {
             return String(localized: "content.private.caption_encrypted", comment: "Caption above the private chat composer once the session is end-to-end encrypted")
         }
         return String(localized: "content.private.caption", comment: "Caption above the private chat composer before encryption is established")
+    }
+}
+
+/// Full-screen private conversation chrome for the glass theme. The original
+/// BitChat transport remains behind this view; this is only the contact-first
+/// presentation used after a peer has been selected.
+private struct IMessageConversationHeader: View {
+    @EnvironmentObject private var appChromeModel: AppChromeModel
+    @EnvironmentObject private var privateConversationModel: PrivateConversationModel
+
+    let headerState: PrivateConversationHeaderState
+    let headerHeight: CGFloat
+    let onBack: () -> Void
+
+    var body: some View {
+        VStack(spacing: 7) {
+            HStack(spacing: 10) {
+                Button(action: onBack) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 18, weight: .semibold))
+                        .frame(width: 42, height: 42)
+                        .background(.ultraThinMaterial, in: Circle())
+                        .overlay(Circle().stroke(Color.white.opacity(0.28), lineWidth: 0.7))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(
+                    String(localized: "content.accessibility.back_to_main_chat", comment: "Accessibility label for returning to main chat")
+                )
+
+                Spacer()
+
+                if headerState.supportsFavoriteToggle {
+                    Button(action: toggleFavorite) {
+                        Image(systemName: headerState.isFavorite ? "star.fill" : "star")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(headerState.isFavorite ? Color.yellow : Color.white)
+                            .frame(width: 42, height: 42)
+                            .background(.ultraThinMaterial, in: Circle())
+                            .overlay(Circle().stroke(Color.white.opacity(0.28), lineWidth: 0.7))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(
+                        headerState.isFavorite
+                        ? String(localized: "content.accessibility.remove_favorite", comment: "Accessibility label to remove a favorite")
+                        : String(localized: "content.accessibility.add_favorite", comment: "Accessibility label to add a favorite")
+                    )
+                }
+
+                Button(action: showContactDetails) {
+                    Image(systemName: headerState.isGroupConversation ? "person.2.fill" : "info.circle.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(Color.white)
+                        .frame(width: 42, height: 42)
+                        .background(.ultraThinMaterial, in: Circle())
+                        .overlay(Circle().stroke(Color.white.opacity(0.28), lineWidth: 0.7))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(
+                    headerState.isGroupConversation
+                    ? String(localized: "content.accessibility.group_chat", comment: "Accessibility label for the group chat indicator")
+                    : String(localized: "content.accessibility.private_chat_header", comment: "Accessibility label describing the private chat header")
+                )
+
+                Button(action: { appChromeModel.presentAppInfo() }) {
+                    Image(systemName: "gearshape.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(Color.white)
+                        .frame(width: 42, height: 42)
+                        .background(.ultraThinMaterial, in: Circle())
+                        .overlay(Circle().stroke(Color.white.opacity(0.28), lineWidth: 0.7))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(
+                    String(localized: "content.accessibility.settings", defaultValue: "Settings", comment: "Accessibility label for the settings button in the chat header")
+                )
+            }
+            .padding(.horizontal, 12)
+            .frame(minHeight: max(42, headerHeight))
+
+            VStack(spacing: 5) {
+                IMessageContactAvatar(name: headerState.displayName, size: 64, statusColor: statusColor)
+
+                Text(headerState.displayName)
+                    .font(.headline.weight(.semibold))
+                        .foregroundColor(Color.white)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .padding(.horizontal, 15)
+                    .padding(.vertical, 5)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .overlay(Capsule().stroke(Color.white.opacity(0.26), lineWidth: 0.7))
+
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(statusColor)
+                        .frame(width: 7, height: 7)
+                    Text(statusText)
+                        .font(.caption.weight(.medium))
+                        .foregroundColor(Color.white.opacity(0.86))
+                        .lineLimit(1)
+                }
+            }
+        }
+        .padding(.top, 3)
+        .padding(.bottom, 10)
+        .accessibilityElement(children: .contain)
+    }
+
+    private func toggleFavorite() {
+        privateConversationModel.toggleFavoriteForSelectedConversation()
+    }
+
+    private func showContactDetails() {
+        if !headerState.isGroupConversation {
+            appChromeModel.showFingerprint(for: headerState.headerPeerID)
+        } else {
+            appChromeModel.presentAppInfo()
+        }
+    }
+
+    private var statusText: String {
+        let transport: String
+        switch headerState.availability {
+        case .bluetoothConnected:
+            transport = String(localized: "content.private.status.nearby", defaultValue: "nearby", comment: "Status for a private peer connected over Bluetooth mesh")
+        case .meshReachable:
+            transport = String(localized: "content.private.status.mesh", defaultValue: "mesh reachable", comment: "Status for a private peer reachable through the mesh")
+        case .nostrAvailable:
+            transport = String(localized: "content.private.status.internet", defaultValue: "available over relay", comment: "Status for a private peer available through the relay")
+        case .offline:
+            transport = String(localized: "content.private.status.offline", defaultValue: "offline", comment: "Status for an unavailable private peer")
+        }
+
+        switch headerState.encryptionStatus {
+        case .noiseSecured, .noiseVerified:
+            return transport + " · " + String(localized: "content.private.status.encrypted", defaultValue: "end-to-end encrypted", comment: "Private chat status when the session is encrypted")
+        default:
+            return transport
+        }
+    }
+
+    private var statusColor: Color {
+        switch headerState.availability {
+        case .offline: return Color.white.opacity(0.58)
+        case .nostrAvailable: return Color.purple
+        default: return Color.green
+        }
+    }
+}
+
+private struct IMessageContactAvatar: View {
+    let name: String
+    let size: CGFloat
+    let statusColor: Color
+
+    var body: some View {
+        ZStack(alignment: .bottomTrailing) {
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [Color.white.opacity(0.96), Color.cyan.opacity(0.6)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .overlay {
+                    Text(initials)
+                        .font(.system(size: size * 0.3, weight: .bold, design: .rounded))
+                        .foregroundColor(Color.blue.opacity(0.78))
+                }
+                .overlay(Circle().stroke(Color.white.opacity(0.86), lineWidth: 2))
+                .shadow(color: Color.black.opacity(0.22), radius: 12, y: 6)
+
+            Circle()
+                .fill(statusColor)
+                .frame(width: size * 0.24, height: size * 0.24)
+                .overlay(Circle().stroke(Color.white.opacity(0.9), lineWidth: 2))
+        }
+        .frame(width: size, height: size)
+        .accessibilityLabel(name)
+    }
+
+    private var initials: String {
+        let cleaned = name
+            .replacingOccurrences(of: "#", with: "")
+            .replacingOccurrences(of: "@", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return String(cleaned.prefix(2)).uppercased()
+    }
+}
+
+private struct IMessageChatBackdrop: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: colorScheme == .dark
+                    ? [Color(red: 0.02, green: 0.10, blue: 0.24), Color(red: 0.02, green: 0.23, blue: 0.38), Color(red: 0.02, green: 0.07, blue: 0.17)]
+                    : [Color(red: 0.10, green: 0.43, blue: 0.72), Color(red: 0.22, green: 0.64, blue: 0.84), Color(red: 0.08, green: 0.31, blue: 0.60)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+            Circle()
+                .fill(Color.white.opacity(colorScheme == .dark ? 0.07 : 0.16))
+                .frame(width: 280, height: 280)
+                .blur(radius: 26)
+                .offset(x: -120, y: -180)
+
+            Circle()
+                .fill(Color.cyan.opacity(colorScheme == .dark ? 0.13 : 0.2))
+                .frame(width: 360, height: 360)
+                .blur(radius: 34)
+                .offset(x: 150, y: 180)
+
+            IMessageWaterRibbon()
+                .stroke(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.18), lineWidth: 22)
+                .blur(radius: 13)
+                .rotationEffect(.degrees(-18))
+                .offset(y: 100)
+
+            IMessageWaterRibbon()
+                .stroke(Color.white.opacity(colorScheme == .dark ? 0.08 : 0.15), lineWidth: 1.2)
+                .rotationEffect(.degrees(-18))
+                .offset(y: 100)
+        }
+        .ignoresSafeArea()
+    }
+}
+
+private struct IMessageWaterRibbon: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let midY = rect.midY
+        path.move(to: CGPoint(x: rect.minX - 30, y: midY))
+        path.addCurve(
+            to: CGPoint(x: rect.maxX + 30, y: midY),
+            control1: CGPoint(x: rect.width * 0.25, y: midY - rect.height * 0.3),
+            control2: CGPoint(x: rect.width * 0.7, y: midY + rect.height * 0.3)
+        )
+        return path
     }
 }
 

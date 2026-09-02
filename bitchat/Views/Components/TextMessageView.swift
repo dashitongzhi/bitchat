@@ -24,12 +24,14 @@ struct TextMessageView: View {
     /// would be skipped even though the parent list re-rendered. Snapshotting
     /// the enum makes the change visible to SwiftUI's structural diff.
     private let deliveryStatus: DeliveryStatus
+    private let showsBubbleTail: Bool
     @State private var expandedMessageIDs: Set<String> = []
     @State private var showDeliveryDetail = false
 
-    init(message: BitchatMessage) {
+    init(message: BitchatMessage, showsBubbleTail: Bool = true) {
         self.message = message
         self.deliveryStatus = message.deliveryStatus
+        self.showsBubbleTail = showsBubbleTail
     }
 
     @ViewBuilder
@@ -251,11 +253,11 @@ struct TextMessageView: View {
                 .padding(.horizontal, 13)
                 .padding(.vertical, 9)
                 .background(
-                    BTChatBubbleShape(isOutgoing: isFromMe)
+                    BTChatBubbleShape(isOutgoing: isFromMe, showsTail: showsBubbleTail)
                         .fill(isFromMe ? palette.accent : incomingBubbleColor)
                 )
                 .overlay(
-                    BTChatBubbleShape(isOutgoing: isFromMe)
+                    BTChatBubbleShape(isOutgoing: isFromMe, showsTail: showsBubbleTail)
                         .stroke(isFromMe ? Color.white.opacity(0.14) : palette.divider.opacity(0.75), lineWidth: 0.6)
                 )
 
@@ -264,23 +266,39 @@ struct TextMessageView: View {
                 }
             }
 
-            if message.isPrivate && isFromMe && deliveryStatus != .notSentYet {
+            if message.isPrivate && isFromMe && deliveryStatus != .notSentYet && showsBubbleTail {
                 HStack(spacing: 4) {
-                    Button {
-                        showDeliveryDetail.toggle()
-                    } label: {
-                        DeliveryStatusView(status: deliveryStatus)
-                            .contentShape(Rectangle())
+                    if case .read(_, let readAt) = deliveryStatus {
+                        Text(
+                            String(
+                                format: String(
+                                    localized: "content.delivery.read_at",
+                                    defaultValue: "Read %@",
+                                    comment: "iMessage-style read receipt below the last outgoing message"
+                                ),
+                                locale: .current,
+                                readAt.formatted(date: .omitted, time: .shortened)
+                            )
+                        )
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(Color.white.opacity(0.8))
+                    } else {
+                        Button {
+                            showDeliveryDetail.toggle()
+                        } label: {
+                            DeliveryStatusView(status: deliveryStatus)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint(
+                            String(localized: "content.accessibility.delivery_detail_hint", comment: "Accessibility hint for the delivery status glyph explaining a tap reveals details")
+                        )
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityHint(
-                        String(localized: "content.accessibility.delivery_detail_hint", comment: "Accessibility hint for the delivery status glyph explaining a tap reveals details")
-                    )
                 }
                 .padding(.trailing, 4)
             }
 
-            if message.isPrivate && isFromMe && deliveryStatus != .notSentYet {
+            if message.isPrivate && isFromMe && deliveryStatus != .notSentYet && showsBubbleTail {
                 if case .failed = deliveryStatus {
                     Text(verbatim: deliveryStatus.bitchatDescription)
                         .font(.caption)
@@ -318,12 +336,18 @@ struct TextMessageView: View {
 /// renderer and message semantics remain unchanged.
 private struct BTChatBubbleShape: Shape {
     let isOutgoing: Bool
+    let showsTail: Bool
+
+    init(isOutgoing: Bool, showsTail: Bool = true) {
+        self.isOutgoing = isOutgoing
+        self.showsTail = showsTail
+    }
 
     func path(in rect: CGRect) -> Path {
-        let tailWidth: CGFloat = 8
-        let tailHeight: CGFloat = 6
+        let tailWidth: CGFloat = showsTail ? 8 : 0
+        let tailHeight: CGFloat = showsTail ? 6 : 0
         let bodyRect = CGRect(
-            x: isOutgoing ? rect.minX : rect.minX + tailWidth,
+            x: isOutgoing || !showsTail ? rect.minX : rect.minX + tailWidth,
             y: rect.minY,
             width: max(0, rect.width - tailWidth),
             height: max(0, rect.height - tailHeight)
@@ -331,7 +355,7 @@ private struct BTChatBubbleShape: Shape {
         let cornerRadius: CGFloat = 18
         var path = Path(roundedRect: bodyRect, cornerRadius: cornerRadius, style: .continuous)
 
-        if isOutgoing {
+        if showsTail && isOutgoing {
             path.move(to: CGPoint(x: bodyRect.maxX - 18, y: bodyRect.maxY - 2))
             path.addQuadCurve(
                 to: CGPoint(x: rect.maxX, y: rect.maxY),
@@ -341,7 +365,7 @@ private struct BTChatBubbleShape: Shape {
                 to: CGPoint(x: bodyRect.maxX - 8, y: bodyRect.maxY - 10),
                 control: CGPoint(x: bodyRect.maxX - 4, y: bodyRect.maxY - 3)
             )
-        } else {
+        } else if showsTail {
             path.move(to: CGPoint(x: bodyRect.minX + 18, y: bodyRect.maxY - 2))
             path.addQuadCurve(
                 to: CGPoint(x: rect.minX, y: rect.maxY),

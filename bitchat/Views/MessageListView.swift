@@ -14,6 +14,19 @@ private struct MessageDisplayItem: Identifiable {
     let message: BitchatMessage
 }
 
+private struct IMessageTimestampLabel: View {
+    let date: Date
+
+    var body: some View {
+        Text(date.formatted(date: .abbreviated, time: .shortened))
+            .font(.caption2.weight(.medium))
+            .foregroundStyle(Color.white.opacity(0.78))
+            .frame(maxWidth: .infinity)
+            .padding(.top, 12)
+            .padding(.bottom, 5)
+    }
+}
+
 struct MessageListView: View {
     @EnvironmentObject private var publicChatModel: PublicChatModel
     @EnvironmentObject private var privateInboxModel: PrivateInboxModel
@@ -93,9 +106,16 @@ struct MessageListView: View {
                     publicEmptyState(fillHeight: geometry.size.height)
                 }
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(messageItems) { item in
+                    ForEach(Array(messageItems.enumerated()), id: \.element.id) { index, item in
                         let message = item.message
-                        messageRow(for: message)
+                        if shouldShowTimestamp(at: index, in: messageItems) {
+                            IMessageTimestampLabel(date: message.timestamp)
+                        }
+
+                        messageRow(
+                            for: message,
+                            showsBubbleTail: shouldShowBubbleTail(at: index, in: messageItems)
+                        )
                             .onAppear {
                                 if message.id == windowedMessages.last?.id {
                                     isAtBottom = true
@@ -163,8 +183,8 @@ struct MessageListView: View {
                                     }
                                 }
                             }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 1)
+                            .padding(.horizontal, theme.usesGlassChrome && privatePeer != nil ? 5 : 12)
+                            .padding(.vertical, theme.usesGlassChrome && privatePeer != nil ? 0 : 1)
                             // Archived echoes read as one tinted block, not
                             // just faded rows.
                             .background(message.isArchivedEcho ? palette.secondary.opacity(0.08) : Color.clear)
@@ -507,19 +527,48 @@ private extension MessageListView {
     }
 
     @ViewBuilder
-    func messageRow(for message: BitchatMessage) -> some View {
+    func messageRow(for message: BitchatMessage, showsBubbleTail: Bool = true) -> some View {
         Group {
             if message.sender == "system" {
                 systemMessageRow(message)
             } else if let media = conversationUIModel.mediaAttachment(for: message) {
                 MediaMessageView(message: message, media: media, imagePreviewURL: $imagePreviewURL)
             } else {
-                TextMessageView(message: message)
+                TextMessageView(message: message, showsBubbleTail: showsBubbleTail)
             }
         }
         // Archived echoes ("heard here earlier") render dimmed: real history,
         // visually distinct from the live conversation.
         .opacity(message.isArchivedEcho ? 0.55 : 1)
+    }
+
+    var usesIMessageBubbles: Bool {
+        privatePeer != nil && theme.usesGlassChrome
+    }
+
+    func shouldShowBubbleTail(at index: Int, in items: [MessageDisplayItem]) -> Bool {
+        guard usesIMessageBubbles,
+              index + 1 < items.count else {
+            return true
+        }
+
+        let message = items[index].message
+        let next = items[index + 1].message
+        guard message.sender != "system", next.sender != "system" else {
+            return true
+        }
+
+        let sameSender = conversationUIModel.isSentByCurrentUser(message)
+            == conversationUIModel.isSentByCurrentUser(next)
+        let closeInTime = next.timestamp.timeIntervalSince(message.timestamp) < 300
+        return !(sameSender && closeInTime)
+    }
+
+    func shouldShowTimestamp(at index: Int, in items: [MessageDisplayItem]) -> Bool {
+        guard usesIMessageBubbles, index > 0 else { return false }
+        let previous = items[index - 1].message
+        let current = items[index].message
+        return current.timestamp.timeIntervalSince(previous.timestamp) >= 900
     }
 
     @ViewBuilder

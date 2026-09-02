@@ -29,7 +29,16 @@ struct ContentComposerView: View {
     @Binding var showMacImagePicker: Bool
     #endif
 
+    @ViewBuilder
     var body: some View {
+        if theme.usesGlassChrome {
+            iMessageBody
+        } else {
+            legacyBody
+        }
+    }
+
+    private var legacyBody: some View {
         VStack(alignment: .leading, spacing: 6) {
             if conversationUIModel.showAutocomplete && !conversationUIModel.autocompleteSuggestions.isEmpty {
                 VStack(alignment: .leading, spacing: 0) {
@@ -159,6 +168,141 @@ struct ContentComposerView: View {
             autocompleteDebounceTimer?.invalidate()
         }
     }
+
+    private var iMessageBody: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if conversationUIModel.showAutocomplete && !conversationUIModel.autocompleteSuggestions.isEmpty {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(conversationUIModel.autocompleteSuggestions.prefix(4).enumerated()), id: \.element) { index, suggestion in
+                        Button(action: {
+                            _ = conversationUIModel.completeNickname(suggestion, in: &messageText)
+                        }) {
+                            HStack {
+                                Text(suggestion)
+                                    .font(.subheadline.weight(.medium))
+                                    .foregroundColor(Color.primary)
+                                Spacer()
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 7)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(
+                                index == conversationUIModel.selectedAutocompleteIndex
+                                    ? Color.blue.opacity(0.12)
+                                    : Color.clear
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(Color.white.opacity(0.28), lineWidth: 0.7)
+                )
+                .padding(.horizontal, 8)
+            }
+
+            CommandSuggestionsView(messageText: $messageText)
+
+            if voiceRecordingVM.state.isActive {
+                recordingIndicator
+            }
+
+            HStack(alignment: .bottom, spacing: 8) {
+                if conversationUIModel.canSendMediaInCurrentContext {
+                    attachmentButton
+                }
+
+                HStack(alignment: .center, spacing: 4) {
+                    iMessageTextField
+
+                    if showsNearbyOnlyToggle {
+                        nearbyOnlyToggle
+                    }
+
+                    sendOrMicButton
+                }
+                .padding(.leading, 5)
+                .padding(.trailing, 3)
+                .padding(.vertical, 2)
+                .background(.ultraThinMaterial, in: Capsule(style: .continuous))
+                .overlay(
+                    Capsule(style: .continuous)
+                        .stroke(Color.white.opacity(0.34), lineWidth: 0.8)
+                )
+            }
+        }
+        .padding(.horizontal, 9)
+        .padding(.top, 5)
+        .padding(.bottom, 7)
+        .background(.ultraThinMaterial)
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(Color.white.opacity(0.22))
+                .frame(height: 0.6)
+        }
+        .onDisappear {
+            autocompleteDebounceTimer?.invalidate()
+        }
+    }
+
+    private var iMessageTextField: some View {
+        TextField(
+            "",
+            text: $messageText,
+            prompt: Text(
+                privateConversationModel.selectedHeaderState == nil
+                    ? placeholderText
+                    : String(localized: "content.input.placeholder.private.glass", defaultValue: "iMessage", comment: "iMessage-style private chat composer placeholder")
+            )
+            .foregroundColor(Color.white.opacity(0.72))
+        )
+        .textFieldStyle(.plain)
+        .font(.body)
+        .foregroundColor(Color.white)
+        .focused(isTextFieldFocused)
+        .autocorrectionDisabled(true)
+        #if os(iOS)
+        .textInputAutocapitalization(.sentences)
+        #endif
+        .submitLabel(.send)
+        .modifier(AutocompleteKeyboardNavigationModifier(
+            isActive: { conversationUIModel.showAutocomplete
+                && !conversationUIModel.autocompleteSuggestions.isEmpty },
+            onMove: { delta in
+                conversationUIModel.moveAutocompleteSelection(by: delta)
+            },
+            onAccept: {
+                conversationUIModel.completeSelectedSuggestion(in: &messageText)
+            },
+            onDismiss: {
+                conversationUIModel.dismissAutocomplete()
+            }
+        ))
+        .onSubmit {
+            if conversationUIModel.showAutocomplete,
+               !conversationUIModel.autocompleteSuggestions.isEmpty,
+               conversationUIModel.completeSelectedSuggestion(in: &messageText) {
+                return
+            }
+            onSendMessage()
+            isTextFieldFocused.wrappedValue = true
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .modifier(FocusEffectDisabledModifier())
+        .onChange(of: messageText) { newValue in
+            autocompleteDebounceTimer?.invalidate()
+            autocompleteDebounceTimer = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: false) { _ in
+                let cursorPosition = newValue.count
+                Task { @MainActor in
+                    conversationUIModel.updateAutocomplete(for: newValue, cursorPosition: cursorPosition)
+                }
+            }
+        }
+    }
 }
 
 private extension ContentComposerView {
@@ -273,8 +417,18 @@ private extension ContentComposerView {
         #if os(iOS)
         Image(systemName: theme.usesGlassChrome ? "plus.circle.fill" : "camera.circle.fill")
             .font(.system(size: theme.usesGlassChrome ? 25 : 24, weight: .medium))
-            .foregroundColor(composerAccentColor)
+            .foregroundColor(theme.usesGlassChrome ? Color.white.opacity(0.92) : composerAccentColor)
             .frame(width: 36, height: 36)
+            .background {
+                if theme.usesGlassChrome {
+                    Circle()
+                        .fill(.ultraThinMaterial)
+                        .overlay {
+                            Circle()
+                                .stroke(Color.white.opacity(0.28), lineWidth: 0.8)
+                        }
+                }
+            }
             .contentShape(Circle())
             .onTapGesture {
                 imagePickerSourceType = .photoLibrary

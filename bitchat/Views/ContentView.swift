@@ -338,6 +338,10 @@ struct ContentView: View {
             .environmentObject(privateInboxModel)
             #endif
         }
+        #if os(iOS)
+        .presentationDetents([.large])
+        .presentationDragIndicator(.hidden)
+        #endif
         .sheet(isPresented: $appChromeModel.isAppInfoPresented) {
             AppInfoView(
                 topologyProvider: { appChromeModel.meshTopologyDisplayModel() },

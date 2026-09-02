@@ -40,7 +40,16 @@ struct ContentHeaderView: View {
         return bridgeService.bridgedPeerCount > 0
     }
 
+    @ViewBuilder
     var body: some View {
+        if theme.usesGlassChrome {
+            iMessageInboxHeader
+        } else {
+            legacyHeader
+        }
+    }
+
+    private var legacyHeader: some View {
         HStack(spacing: 0) {
                 Text(verbatim: "BT Chat")
                     .padding(.trailing, 4)
@@ -401,6 +410,113 @@ struct ContentHeaderView: View {
             ShareActivityView(text: payload.text)
         }
         .themedChromePanel(edge: .top)
+    }
+
+    /// The no-contact state stays deliberately simple: it is an inbox-like
+    /// title with a real search/people entry point, rather than a fabricated
+    /// one-to-one header. Selecting a peer opens the dedicated conversation
+    /// page in ContentPrivateChatSheetView.
+    private var iMessageInboxHeader: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                Text(verbatim: "BT Chat")
+                    .font(.largeTitle.weight(.bold))
+                    .foregroundColor(palette.primary)
+                    .lineLimit(1)
+
+                Spacer(minLength: 0)
+
+                Button(action: { showSidebar = true }) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(palette.primary)
+                        .frame(width: 40, height: 40)
+                        .background(.ultraThinMaterial, in: Circle())
+                        .overlay(Circle().stroke(Color.white.opacity(0.35), lineWidth: 0.7))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(
+                    String(localized: "content.accessibility.search_people", defaultValue: "Search contacts", comment: "Accessibility label for the contact search button when no conversation is selected")
+                )
+
+                Button(action: { appChromeModel.presentAppInfo() }) {
+                    Image(systemName: "gearshape.fill")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundColor(palette.primary)
+                        .frame(width: 40, height: 40)
+                        .background(.ultraThinMaterial, in: Circle())
+                        .overlay(Circle().stroke(Color.white.opacity(0.35), lineWidth: 0.7))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(
+                    String(localized: "content.accessibility.settings", defaultValue: "Settings", comment: "Accessibility label for the settings button in the chat header")
+                )
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 10)
+            .padding(.bottom, 8)
+
+            HStack(spacing: 8) {
+                Image(systemName: "antenna.radiowaves.left.and.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(Color.white.opacity(0.9))
+
+                Button(action: { appChromeModel.isLocationChannelsSheetPresented = true }) {
+                    Text(activeChannelLabel)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(Color.white)
+                        .lineLimit(1)
+                }
+                .buttonStyle(.plain)
+
+                Spacer(minLength: 0)
+
+                Text(activeChannelPeerSummary)
+                    .font(.caption.weight(.medium))
+                    .foregroundColor(Color.white.opacity(0.78))
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 13)
+            .padding(.vertical, 9)
+            .background(
+                LinearGradient(
+                    colors: [Color.blue.opacity(0.78), Color.cyan.opacity(0.58)],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                ),
+                in: Capsule(style: .continuous)
+            )
+            .overlay(Capsule(style: .continuous).stroke(Color.white.opacity(0.26), lineWidth: 0.7))
+            .padding(.horizontal, 12)
+            .padding(.bottom, 9)
+        }
+        .background(.ultraThinMaterial)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(Color.white.opacity(0.22))
+                .frame(height: 0.6)
+        }
+    }
+
+    private var activeChannelLabel: String {
+        switch locationChannelsModel.selectedChannel {
+        case .mesh:
+            return "#mesh"
+        case .location(let channel):
+            return "#\(channel.geohash)"
+        }
+    }
+
+    private var activeChannelPeerSummary: String {
+        let count = channelPeopleCountAndColor().0 + bridgeService.bridgedPeerCount
+        if count == 0 {
+            return String(localized: "content.header.no_people_yet", defaultValue: "waiting for people", comment: "Summary in the no-contact header when no mesh peers are visible")
+        }
+        return String(
+            format: String(localized: "content.header.people_nearby", defaultValue: "%lld nearby", comment: "Summary in the no-contact header counting visible mesh peers"),
+            locale: .current,
+            count
+        )
     }
 
     private func requestHeaderShare(forGeohash geohash: String) {
