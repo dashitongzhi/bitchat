@@ -14,6 +14,7 @@ struct ContentComposerView: View {
     @Environment(\.appTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
     @ThemedPalette private var palette
+    @State private var isAttachmentSourceDialogPresented = false
 
     @Binding var messageText: String
     var isTextFieldFocused: FocusState<Bool>.Binding
@@ -220,6 +221,30 @@ struct ContentComposerView: View {
         .onDisappear {
             autocompleteDebounceTimer?.invalidate()
         }
+        .confirmationDialog(
+            "添加附件",
+            isPresented: $isAttachmentSourceDialogPresented,
+            titleVisibility: .hidden
+        ) {
+            #if os(iOS)
+            Button {
+                imagePickerSourceType = .camera
+                showImagePicker = true
+            } label: {
+                Label("相机", systemImage: "camera")
+            }
+            .disabled(!UIImagePickerController.isSourceTypeAvailable(.camera))
+
+            Button {
+                imagePickerSourceType = .photoLibrary
+                showImagePicker = true
+            } label: {
+                Label("照片图库", systemImage: "photo.on.rectangle")
+            }
+            #endif
+
+            Button("取消", role: .cancel) { }
+        }
     }
 
     private var iMessageComposerStack: some View {
@@ -248,15 +273,14 @@ struct ContentComposerView: View {
         .frame(minHeight: 54)
         .padding(.horizontal, 17)
         .padding(.top, 8)
-        .padding(.bottom, 12)
+        .padding(.bottom, 0)
     }
 
     @ViewBuilder
     private var iMessageAttachmentButton: some View {
         #if os(iOS)
         Button {
-            imagePickerSourceType = .photoLibrary
-            showImagePicker = true
+            isAttachmentSourceDialogPresented = true
         } label: {
             Image(systemName: "plus")
                 .font(.system(size: 27, weight: .medium))
@@ -272,13 +296,6 @@ struct ContentComposerView: View {
             )
         )
         .imessageLiquidGlassBackground(cornerRadius: 24, interactive: true, style: .clear)
-        .simultaneousGesture(
-            LongPressGesture(minimumDuration: 0.3)
-                .onEnded { _ in
-                    imagePickerSourceType = .camera
-                    showImagePicker = true
-                }
-        )
         .accessibilityLabel(
             String(localized: "content.accessibility.attach_photo", comment: "Accessibility label for the photo attachment button")
         )
