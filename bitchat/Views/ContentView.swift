@@ -85,6 +85,13 @@ struct FocusEffectDisabledModifier: ViewModifier {
     }
 }
 
+#if os(iOS)
+private enum ContentRootTab: Hashable {
+    case publicChannel
+    case contacts
+}
+#endif
+
 struct ContentView: View {
     @EnvironmentObject private var appChromeModel: AppChromeModel
     @EnvironmentObject private var privateConversationModel: PrivateConversationModel
@@ -103,6 +110,9 @@ struct ContentView: View {
     @Environment(\.appTheme) private var appTheme
     @Environment(\.scenePhase) private var scenePhase
     @State private var showSidebar = false
+    #if os(iOS)
+    @State private var selectedRootTab: ContentRootTab = .publicChannel
+    #endif
     @State private var selectedMessageSender: String?
     @State private var selectedMessageSenderID: PeerID?
     @FocusState private var isNicknameFieldFocused: Bool
@@ -140,7 +150,11 @@ struct ContentView: View {
     private var usesGlassLayout: Bool { appTheme.usesGlassChrome }
 
     private var isPeopleSheetPresented: Bool {
+        #if os(iOS)
+        selectedRootTab == .contacts
+        #else
         showSidebar || selectedPrivatePeerID != nil
+        #endif
     }
 
     private func rootModalPresentationState(
@@ -224,7 +238,7 @@ struct ContentView: View {
     }
 
     var body: some View {
-        mainContent
+        rootContent
             .onAppear {
                 conversationUIModel.setCurrentColorScheme(colorScheme)
                 conversationUIModel.setCurrentTheme(appTheme)
@@ -254,9 +268,15 @@ struct ContentView: View {
         .frame(minWidth: 600, minHeight: 400)
         #endif
         .onChange(of: selectedPrivatePeerID) { newValue in
+            #if os(iOS)
+            if newValue != nil {
+                selectedRootTab = .contacts
+            }
+            #else
             if newValue != nil {
                 showSidebar = true
             }
+            #endif
             sharedContentImportModel.updateDestination(sharedContentDestination)
         }
         .onChange(of: locationChannelsModel.selectedChannel) { _ in
@@ -264,7 +284,13 @@ struct ContentView: View {
         }
         .sheet(
             isPresented: Binding(
-                get: { isPeopleSheetPresented },
+                get: {
+                    #if os(iOS)
+                    false
+                    #else
+                    isPeopleSheetPresented
+                    #endif
+                },
                 set: { isPresented in
                     if !isPresented {
                         showSidebar = false
@@ -459,6 +485,63 @@ struct ContentView: View {
     /// Matrix: classic opaque bars with dividers. Glass: full-bleed message
     /// list scrolling underneath floating chrome panels (safe-area insets),
     /// so the translucency gains usable space instead of losing it.
+    @ViewBuilder
+    private var rootContent: some View {
+        #if os(iOS)
+        TabView(selection: $selectedRootTab) {
+            mainContent
+                .tabItem {
+                    Label(
+                        String(localized: "content.tab.public", defaultValue: "公共", comment: "Title of the public channel root tab"),
+                        systemImage: "bubble.left.and.bubble.right.fill"
+                    )
+                }
+                .tag(ContentRootTab.publicChannel)
+
+            contactsTab
+                .tabItem {
+                    Label(
+                        String(localized: "content.tab.contacts", defaultValue: "联系人", comment: "Title of the contacts and private chats root tab"),
+                        systemImage: "person.2.fill"
+                    )
+                }
+                .tag(ContentRootTab.contacts)
+        }
+        .tint(palette.accentBlue)
+        .onChange(of: selectedRootTab) { newTab in
+            showSidebar = newTab == .contacts
+            if newTab == .publicChannel {
+                privateConversationModel.endConversation()
+            }
+        }
+        #else
+        mainContent
+        #endif
+    }
+
+    #if os(iOS)
+    private var contactsTab: some View {
+        ContentPeopleSheetView(
+            showSidebar: $showSidebar,
+            messageText: $messageText,
+            selectedMessageSender: $selectedMessageSender,
+            selectedMessageSenderID: $selectedMessageSenderID,
+            imagePreviewURL: $imagePreviewURL,
+            windowCountPublic: $windowCountPublic,
+            windowCountPrivate: $windowCountPrivate,
+            isAtBottomPrivate: $isAtBottomPrivate,
+            isTextFieldFocused: $isTextFieldFocused,
+            voiceRecordingVM: voiceRecordingVM,
+            autocompleteDebounceTimer: $autocompleteDebounceTimer,
+            headerHeight: headerHeight,
+            onSendMessage: sendMessage,
+            showImagePicker: $showImagePicker,
+            imagePickerSourceType: $imagePickerSourceType,
+            showsCloseButton: false
+        )
+    }
+    #endif
+
     @ViewBuilder
     private var mainContent: some View {
         if usesGlassLayout {

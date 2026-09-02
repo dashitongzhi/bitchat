@@ -52,6 +52,7 @@ struct ContentPeopleSheetView: View {
     #else
     @Binding var showMacImagePicker: Bool
     #endif
+    var showsCloseButton = true
 
     private func modalPresentationState(
         includingVoiceAlert: Bool
@@ -166,7 +167,8 @@ struct ContentPeopleSheetView: View {
                 } else {
                     ContentPeopleListView(
                         showSidebar: $showSidebar,
-                        showVerifySheet: $showVerifySheet
+                        showVerifySheet: $showVerifySheet,
+                        showsCloseButton: showsCloseButton
                     )
                 }
             }
@@ -321,6 +323,7 @@ private struct ContentPeopleListView: View {
 
     @Binding var showSidebar: Bool
     @Binding var showVerifySheet: Bool
+    let showsCloseButton: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -345,12 +348,14 @@ private struct ContentPeopleListView: View {
                             String(localized: "content.help.verification", comment: "Help text for verification button")
                         )
                     }
-                    SheetCloseButton {
-                        withAnimation(.easeInOut(duration: TransportConfig.uiAnimationMediumSeconds)) {
-                            dismiss()
-                            showSidebar = false
-                            showVerifySheet = false
-                            privateConversationModel.endConversation()
+                    if showsCloseButton {
+                        SheetCloseButton {
+                            withAnimation(.easeInOut(duration: TransportConfig.uiAnimationMediumSeconds)) {
+                                dismiss()
+                                showSidebar = false
+                                showVerifySheet = false
+                                privateConversationModel.endConversation()
+                            }
                         }
                     }
                 }

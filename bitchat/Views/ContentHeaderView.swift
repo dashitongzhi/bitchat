@@ -131,6 +131,7 @@ struct ContentHeaderView: View {
                 String(localized: "content.accessibility.settings_hint", defaultValue: "Opens chat and connection settings", comment: "Accessibility hint for the settings button in the chat header")
             )
 
+            #if os(macOS)
             let countAndColor = channelPeopleCountAndColor()
             let headerCountColor = countAndColor.1
             let headerOtherPeersCount: Int = {
@@ -142,6 +143,7 @@ struct ContentHeaderView: View {
                 // this device's own bridge is off). The sheet breaks it down.
                 return countAndColor.0 + bridgeService.bridgedPeerCount
             }()
+            #endif
 
             HStack(spacing: 2) {
                 if locationChannelsModel.gatewayEnabled {
@@ -294,6 +296,7 @@ struct ContentHeaderView: View {
                 }
                 .buttonStyle(.plain)
 
+                #if os(macOS)
                 Button(action: {
                     withAnimation(.easeInOut(duration: TransportConfig.uiAnimationMediumSeconds)) {
                         showSidebar.toggle()
@@ -334,6 +337,7 @@ struct ContentHeaderView: View {
                         ? String(localized: "content.accessibility.peers_connected", comment: "Accessibility value when peers are reachable")
                         : String(localized: "content.accessibility.peers_none", comment: "Accessibility value when no peers are reachable"))
                 )
+                #endif
             }
             .layoutPriority(3)
             .sheet(isPresented: $showVerifySheet) {
