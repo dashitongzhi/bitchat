@@ -527,6 +527,17 @@ struct IMessageReferenceChatHeader: View {
 
     let headerState: PrivateConversationHeaderState
     let onBack: () -> Void
+    let unreadCountOverride: Int?
+
+    init(
+        headerState: PrivateConversationHeaderState,
+        onBack: @escaping () -> Void,
+        unreadCountOverride: Int? = nil
+    ) {
+        self.headerState = headerState
+        self.onBack = onBack
+        self.unreadCountOverride = unreadCountOverride
+    }
 
     private var foreground: Color {
         colorScheme == .dark ? .white : .black
@@ -543,13 +554,10 @@ struct IMessageReferenceChatHeader: View {
                         if unreadCount > 0 {
                             Text("\(unreadCount)")
                                 .font(.system(size: 17, weight: .heavy, design: .rounded))
-                                .foregroundStyle(foreground)
+                                .foregroundStyle(.black)
                                 .padding(.horizontal, 11)
                                 .padding(.vertical, 3.5)
-                                .background(
-                                    colorScheme == .dark ? Color.white.opacity(0.18) : Color.black.opacity(0.08),
-                                    in: Capsule()
-                                )
+                                .background(Color.white.opacity(0.92), in: Capsule())
                         }
                     }
                     .foregroundStyle(foreground)
@@ -567,7 +575,7 @@ struct IMessageReferenceChatHeader: View {
                                 lineWidth: 0.8
                             )
                     )
-                    .background(.ultraThinMaterial, in: Capsule())
+                    .imessageLiquidGlassBackground(cornerRadius: 22, interactive: true)
                 }
                 .buttonStyle(.plain)
                 .shadow(color: .black.opacity(colorScheme == .dark ? 0.28 : 0.08), radius: 14, y: 8)
@@ -621,7 +629,7 @@ struct IMessageReferenceChatHeader: View {
                                 lineWidth: 0.8
                             )
                         )
-                        .background(.ultraThinMaterial, in: Circle())
+                        .imessageLiquidGlassBackground(cornerRadius: 22, interactive: true)
                 }
                 .menuStyle(.borderlessButton)
                 .accessibilityLabel(
@@ -642,12 +650,17 @@ struct IMessageReferenceChatHeader: View {
                     size: 44,
                     statusColor: statusColor
                 )
-                .overlay(Circle().stroke(foreground.opacity(0.22), lineWidth: 1))
+                .overlay(
+                    Circle().stroke(
+                        colorScheme == .dark ? Color.white.opacity(0.45) : Color.black.opacity(0.12),
+                        lineWidth: 1
+                    )
+                )
                 .shadow(color: .black.opacity(colorScheme == .dark ? 0.3 : 0.12), radius: 16, y: 8)
 
                 Text(headerState.displayName)
                     .font(.system(size: 11.5, weight: .semibold))
-                    .foregroundStyle(foreground.opacity(0.78))
+                    .foregroundStyle(titleColor)
                     .lineLimit(1)
                     .padding(.horizontal, 30)
                     .padding(.vertical, 7)
@@ -656,9 +669,12 @@ struct IMessageReferenceChatHeader: View {
                         in: Capsule()
                     )
                     .overlay(
-                        Capsule().stroke(foreground.opacity(0.12), lineWidth: 0.8)
+                        Capsule().stroke(
+                            colorScheme == .dark ? Color.white.opacity(0.08) : Color.black.opacity(0.12),
+                            lineWidth: 0.8
+                        )
                     )
-                    .background(.ultraThinMaterial, in: Capsule())
+                    .imessageLiquidGlassBackground(cornerRadius: 17)
             }
             .frame(maxWidth: 210)
             .offset(y: 6)
@@ -679,7 +695,8 @@ struct IMessageReferenceChatHeader: View {
     }
 
     private var unreadCount: Int {
-        privateInboxModel.unreadPeerIDs.contains(headerState.conversationPeerID) ? 1 : 0
+        unreadCountOverride
+            ?? (privateInboxModel.unreadPeerIDs.contains(headerState.conversationPeerID) ? 1 : 0)
     }
 
     private var statusColor: Color {
@@ -691,6 +708,10 @@ struct IMessageReferenceChatHeader: View {
         default:
             return .green
         }
+    }
+
+    private var titleColor: Color {
+        colorScheme == .dark ? Color.white.opacity(0.30) : Color.black.opacity(0.72)
     }
 }
 
@@ -734,6 +755,51 @@ struct IMessageReferenceChatBackdrop: View {
             )
         }
         .ignoresSafeArea()
+    }
+}
+
+struct IMessageLiquidGlassBackgroundModifier: ViewModifier {
+    let cornerRadius: CGFloat
+    let interactive: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        #if compiler(>=6.2)
+        if #available(iOS 26.0, macOS 26.0, *) {
+            if interactive {
+                content.glassEffect(.regular.interactive(), in: .rect(cornerRadius: cornerRadius))
+            } else {
+                content.glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
+            }
+        } else {
+            fallback(content)
+        }
+        #else
+        fallback(content)
+        #endif
+    }
+
+    private func fallback(_ content: Content) -> some View {
+        content
+            .background(
+                .ultraThinMaterial,
+                in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(Color.white.opacity(0.22), lineWidth: 0.7)
+            )
+    }
+}
+
+extension View {
+    func imessageLiquidGlassBackground(cornerRadius: CGFloat, interactive: Bool = false) -> some View {
+        modifier(
+            IMessageLiquidGlassBackgroundModifier(
+                cornerRadius: cornerRadius,
+                interactive: interactive
+            )
+        )
     }
 }
 
@@ -862,7 +928,8 @@ struct IMessageFrontEndPreviewChatView: View {
 
             IMessageReferenceChatHeader(
                 headerState: previewHeader,
-                onBack: { dismiss() }
+                onBack: { dismiss() },
+                unreadCountOverride: 1
             )
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -878,71 +945,115 @@ private struct IMessagePreviewComposer: View {
     @Binding var draft: String
     @Environment(\.colorScheme) private var colorScheme
 
+    private let tools: [(String, String?)] = [
+        ("快捷回复", nil),
+        ("WeChat液态Glass.ai", nil),
+        ("拍摄", "camera.fill"),
+        ("文件", "folder.fill"),
+        ("添加", "plus")
+    ]
+
     var body: some View {
-        HStack(alignment: .center, spacing: 9) {
-            Button {} label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 27, weight: .medium))
-                    .foregroundStyle(colorScheme == .dark ? .white.opacity(0.88) : .black.opacity(0.84))
+        VStack(spacing: 7) {
+            HStack(spacing: 12) {
+                ForEach(Array(tools.enumerated()), id: \.offset) { index, tool in
+                    HStack(spacing: 5) {
+                        if let symbol = tool.1 {
+                            Image(systemName: symbol)
+                                .font(.system(size: index == tools.count - 1 ? 19 : 17, weight: .semibold))
+                        }
+                        Text(tool.0)
+                            .font(.system(size: index == 1 ? 13.5 : 15.5, weight: .bold, design: .rounded))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.82)
+                    }
+                    .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.88) : Color.black.opacity(0.72))
+                    .padding(.horizontal, index < 2 ? 8 : 9)
+                    .frame(minHeight: 28)
+                    .overlay(
+                        Capsule().stroke(
+                            colorScheme == .dark ? Color.white.opacity(0.20) : Color.black.opacity(0.12),
+                            lineWidth: 0.7
+                        )
+                    )
+                    .imessageLiquidGlassBackground(cornerRadius: 14, interactive: true)
+                }
+            }
+            .frame(maxWidth: .infinity)
+
+            HStack(alignment: .center, spacing: 9) {
+                Button {} label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 27, weight: .medium))
+                        .foregroundStyle(colorScheme == .dark ? .white.opacity(0.88) : .black.opacity(0.84))
+                        .frame(width: 48, height: 48)
+                        .overlay(
+                            Circle().stroke(
+                                colorScheme == .dark ? Color.white.opacity(0.24) : Color.black.opacity(0.12),
+                                lineWidth: 0.8
+                            )
+                        )
+                        .imessageLiquidGlassBackground(cornerRadius: 24, interactive: true)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("添加附件")
+
+                HStack(spacing: 10) {
+                    TextField(
+                        "Text Message · SMS",
+                        text: $draft,
+                        axis: .vertical
+                    )
+                    .font(.system(size: 17, weight: .semibold, design: .rounded))
+                    .foregroundStyle(colorScheme == .dark ? .white.opacity(0.88) : .black.opacity(0.86))
+                    .tint(colorScheme == .dark ? .white : .blue)
+                    .lineLimit(1...5)
+                    .textInputAutocapitalization(.sentences)
+                    .autocorrectionDisabled(true)
+                    .padding(.leading, 17)
+                    .onSubmit { draft = "" }
+
+                    Button {
+                        if !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            draft = ""
+                        }
+                    } label: {
+                        Image(systemName: draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "face.smiling" : "arrow.up.circle.fill")
+                            .font(.system(size: draft.isEmpty ? 25 : 29, weight: .medium))
+                            .foregroundStyle(
+                                draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                    ? (colorScheme == .dark ? .white.opacity(0.88) : .black.opacity(0.72))
+                                    : (colorScheme == .dark ? .white.opacity(0.88) : .blue)
+                            )
+                            .frame(width: 43, height: 43)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(draft.isEmpty ? "表情" : "发送")
+                }
+                .frame(height: 48)
+                .padding(.trailing, 6)
+                .overlay(
+                    Capsule(style: .continuous)
+                        .stroke(
+                            colorScheme == .dark ? Color.white.opacity(0.22) : Color.black.opacity(0.12),
+                            lineWidth: 0.8
+                        )
+                )
+                .imessageLiquidGlassBackground(cornerRadius: 24, interactive: true)
+
+                Image(systemName: "speaker.wave.2")
+                    .font(.system(size: 25, weight: .medium))
+                    .foregroundStyle(colorScheme == .dark ? .white.opacity(0.88) : .black.opacity(0.72))
                     .frame(width: 48, height: 48)
-                    .background(.ultraThinMaterial, in: Circle())
                     .overlay(
                         Circle().stroke(
                             colorScheme == .dark ? Color.white.opacity(0.24) : Color.black.opacity(0.12),
-                            lineWidth: 0.8
+                            lineWidth: 0.9
                         )
                     )
+                    .imessageLiquidGlassBackground(cornerRadius: 24, interactive: true)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel("添加附件")
-
-            HStack(spacing: 10) {
-                TextField(
-                    "Text Message · SMS",
-                    text: $draft,
-                    axis: .vertical
-                )
-                .font(.system(size: 17, weight: .semibold, design: .rounded))
-                .foregroundStyle(colorScheme == .dark ? .white.opacity(0.88) : .black.opacity(0.86))
-                .tint(colorScheme == .dark ? .white : .blue)
-                .lineLimit(1...5)
-                .textInputAutocapitalization(.sentences)
-                .autocorrectionDisabled(true)
-                .padding(.leading, 17)
-                .onSubmit { draft = "" }
-
-                Button {
-                    if !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        draft = ""
-                    }
-                } label: {
-                    Image(systemName: draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "waveform" : "arrow.up.circle.fill")
-                        .font(.system(size: draft.isEmpty ? 20 : 28, weight: .medium))
-                        .foregroundStyle(
-                            draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                                ? (colorScheme == .dark ? .white.opacity(0.62) : .black.opacity(0.28))
-                                : .blue
-                        )
-                        .frame(width: 43, height: 43)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(draft.isEmpty ? "语音消息" : "发送")
-            }
-            .frame(height: 48)
-            .padding(.trailing, 6)
-            .background(
-                colorScheme == .dark
-                    ? AnyShapeStyle(.ultraThinMaterial)
-                    : AnyShapeStyle(Color.white.opacity(0.82)),
-                in: Capsule(style: .continuous)
-            )
-            .overlay(
-                Capsule(style: .continuous)
-                    .stroke(
-                        colorScheme == .dark ? Color.white.opacity(0.22) : Color.black.opacity(0.12),
-                        lineWidth: 0.8
-                    )
-            )
+            .frame(minHeight: 54)
         }
         .padding(.horizontal, 17)
         .padding(.top, 8)
@@ -972,12 +1083,12 @@ private struct IMessagePreviewBubble: View {
         Text(text)
             .font(.system(size: 16.5))
             .lineSpacing(1.5)
-            .foregroundStyle(isOutgoing ? Color.white : (colorScheme == .dark ? Color.white.opacity(0.88) : Color.black.opacity(0.86)))
+            .foregroundStyle(isOutgoing ? Color.black.opacity(0.86) : (colorScheme == .dark ? Color.white.opacity(0.88) : Color.black.opacity(0.86)))
             .padding(.horizontal, 13)
             .padding(.vertical, 9)
             .background(
                 IMessagePreviewBubbleShape(isOutgoing: isOutgoing)
-                    .fill(isOutgoing ? .blue : (colorScheme == .dark ? Color(red: 0.08, green: 0.09, blue: 0.10).opacity(0.76) : Color(red: 0.91, green: 0.91, blue: 0.93)))
+                    .fill(isOutgoing ? Color(red: 0.06, green: 0.78, blue: 0.36) : (colorScheme == .dark ? Color(red: 0.08, green: 0.09, blue: 0.10).opacity(0.76) : Color(red: 0.91, green: 0.91, blue: 0.93)))
             )
             .frame(maxWidth: 298, alignment: isOutgoing ? .trailing : .leading)
     }

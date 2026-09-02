@@ -282,7 +282,11 @@ struct TextMessageView: View {
                             )
                         )
                         .font(.caption2.weight(.medium))
-                        .foregroundStyle(Color.white.opacity(0.8))
+                        .foregroundStyle(
+                            colorScheme == .dark
+                                ? Color.white.opacity(0.8)
+                                : Color.black.opacity(0.58)
+                        )
                     } else {
                         Button {
                             showDeliveryDetail.toggle()
@@ -334,11 +338,11 @@ struct TextMessageView: View {
     }
 
     private var privateOutgoingBubbleColor: Color {
-        palette.accentBlue
+        Color(red: 0.06, green: 0.78, blue: 0.36)
     }
 
     private var privateOutgoingTextColor: Color {
-        .white
+        Color.black.opacity(0.86)
     }
 
     private var privateIncomingTextColor: Color {

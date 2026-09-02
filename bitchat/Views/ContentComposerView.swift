@@ -209,32 +209,12 @@ struct ContentComposerView: View {
                 recordingIndicator
             }
 
-            HStack(alignment: .bottom, spacing: 8) {
-                if conversationUIModel.canSendMediaInCurrentContext {
-                    attachmentButton
+            if #available(iOS 26.0, macOS 26.0, *) {
+                GlassEffectContainer(spacing: 12) {
+                    iMessageComposerStack
                 }
-
-                HStack(alignment: .center, spacing: 4) {
-                    iMessageTextField
-
-                    if showsNearbyOnlyToggle {
-                        nearbyOnlyToggle
-                    }
-
-                    sendOrMicButton
-                }
-                .padding(.leading, 5)
-                .padding(.trailing, 3)
-                .padding(.vertical, 2)
-                .frame(minHeight: 48)
-                .background(.ultraThinMaterial, in: Capsule(style: .continuous))
-                .overlay(
-                    Capsule(style: .continuous)
-                        .stroke(
-                            colorScheme == .dark ? Color.white.opacity(0.34) : Color.black.opacity(0.12),
-                            lineWidth: 0.8
-                        )
-                )
+            } else {
+                iMessageComposerStack
             }
         }
         .padding(.horizontal, 9)
@@ -251,6 +231,129 @@ struct ContentComposerView: View {
         }
     }
 
+    private var iMessageComposerStack: some View {
+        VStack(spacing: 7) {
+            iMessageQuickToolStrip
+
+            HStack(alignment: .center, spacing: 9) {
+                if conversationUIModel.canSendMediaInCurrentContext {
+                    attachmentButton
+                }
+
+                HStack(alignment: .center, spacing: 10) {
+                    iMessageTextField
+                    iMessageTrailingButton
+                }
+                .frame(height: 48)
+                .padding(.trailing, 6)
+                .overlay(
+                    Capsule(style: .continuous)
+                        .stroke(
+                            colorScheme == .dark ? Color.white.opacity(0.22) : Color.black.opacity(0.12),
+                            lineWidth: 0.8
+                        )
+                )
+                .imessageLiquidGlassBackground(cornerRadius: 24, interactive: true)
+
+                iMessageVoiceButton
+            }
+            .frame(minHeight: 54)
+        }
+    }
+
+    private var iMessageQuickToolStrip: some View {
+        let tools: [(String, String?)] = [
+            ("快捷回复", nil),
+            ("WeChat液态Glass.ai", nil),
+            ("拍摄", "camera.fill"),
+            ("文件", "folder.fill"),
+            ("添加", "plus")
+        ]
+
+        return HStack(spacing: 12) {
+            ForEach(Array(tools.enumerated()), id: \.offset) { index, tool in
+                HStack(spacing: 5) {
+                    if let symbol = tool.1 {
+                        Image(systemName: symbol)
+                            .font(.system(size: index == tools.count - 1 ? 19 : 17, weight: .semibold))
+                    }
+
+                    Text(tool.0)
+                        .font(.system(size: index == 1 ? 13.5 : 15.5, weight: .bold, design: .rounded))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.82)
+                }
+                .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.88) : Color.black.opacity(0.72))
+                .padding(.horizontal, index < 2 ? 8 : 9)
+                .frame(minHeight: 28)
+                .overlay(
+                    Capsule().stroke(
+                        colorScheme == .dark ? Color.white.opacity(0.20) : Color.black.opacity(0.12),
+                        lineWidth: 0.7
+                    )
+                )
+                .imessageLiquidGlassBackground(cornerRadius: 14, interactive: true)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .shadow(color: .black.opacity(colorScheme == .dark ? 0.20 : 0.08), radius: 5, y: 2)
+    }
+
+    private var iMessageTrailingButton: some View {
+        let hasText = !messageText.trimmed.isEmpty
+        return Button {
+            if hasText {
+                onSendMessage()
+            } else {
+                isTextFieldFocused.wrappedValue.toggle()
+            }
+        } label: {
+            Image(systemName: hasText ? "arrow.up.circle.fill" : "face.smiling")
+                .font(.system(size: hasText ? 29 : 25, weight: .medium))
+                .foregroundStyle(
+                    hasText
+                        ? (colorScheme == .dark ? Color.white.opacity(0.88) : palette.accentBlue)
+                        : (colorScheme == .dark ? Color.white.opacity(0.88) : Color.black.opacity(0.72))
+                )
+                .frame(width: 43, height: 43)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(hasText ? "发送" : "表情")
+    }
+
+    private var iMessageVoiceButton: some View {
+        ZStack {
+            Image(systemName: "speaker.wave.2")
+                .font(.system(size: 25, weight: .medium))
+                .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.88) : Color.black.opacity(0.72))
+                .frame(width: 48, height: 48)
+
+            Color.clear
+                .contentShape(Circle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { _ in
+                            voiceRecordingVM.start(shouldShow: conversationUIModel.canSendMediaInCurrentContext)
+                        }
+                        .onEnded { _ in
+                            voiceRecordingVM.finish(completion: conversationUIModel.sendVoiceNote)
+                        }
+                )
+        }
+        .frame(width: 48, height: 48)
+        .overlay(
+            Circle().stroke(
+                colorScheme == .dark ? Color.white.opacity(0.24) : Color.black.opacity(0.12),
+                lineWidth: 0.9
+            )
+        )
+        .imessageLiquidGlassBackground(cornerRadius: 24, interactive: true)
+        .shadow(color: .black.opacity(colorScheme == .dark ? 0.20 : 0.08), radius: 12, y: 6)
+        .accessibilityLabel("语音消息")
+        .accessibilityAddTraits(.isButton)
+    }
+
     private var iMessageTextField: some View {
         TextField(
             "",
@@ -264,12 +367,14 @@ struct ContentComposerView: View {
                 colorScheme == .dark
                     ? Color.white.opacity(0.72)
                     : Color.black.opacity(0.30)
-            )
+            ),
+            axis: .vertical
         )
         .textFieldStyle(.plain)
-        .font(.body)
+        .font(.system(size: 17, weight: .semibold, design: .rounded))
         .foregroundColor(colorScheme == .dark ? Color.white : Color.black.opacity(0.86))
         .tint(colorScheme == .dark ? .white : palette.accentBlue)
+        .lineLimit(1...5)
         .focused(isTextFieldFocused)
         .autocorrectionDisabled(true)
         #if os(iOS)
