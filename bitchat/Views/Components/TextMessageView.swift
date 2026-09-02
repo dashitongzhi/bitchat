@@ -32,7 +32,23 @@ struct TextMessageView: View {
         self.deliveryStatus = message.deliveryStatus
     }
 
+    @ViewBuilder
     var body: some View {
+        if theme.usesGlassChrome {
+            liquidGlassBody
+                // Keep the detail caption in sync with the mutable delivery
+                // state in the same way as the legacy renderer.
+                .onChange(of: deliveryStatus) { _ in
+                    if showDeliveryDetail {
+                        showDeliveryDetail = false
+                    }
+                }
+        } else {
+            matrixBody
+        }
+    }
+
+    private var matrixBody: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Precompute heavy token scans once per row
             let cashuLinks = message.content.extractCashuLinks()
@@ -149,6 +165,195 @@ struct TextMessageView: View {
                 showDeliveryDetail = false
             }
         }
+    }
+
+    @ViewBuilder
+    private var liquidGlassBody: some View {
+        let isFromMe = conversationUIModel.isSentByCurrentUser(message)
+        let isLong = message.content.isLongForDisplay()
+        let isExpanded = expandedMessageIDs.contains(message.id)
+        let cashuLinks = message.content.extractCashuLinks()
+        let lightningLinks = message.content.extractLightningLinks()
+
+        VStack(alignment: isFromMe ? .trailing : .leading, spacing: 3) {
+            // Public mesh messages keep a quiet sender line. Private chats
+            // read like iMessage: the conversation already identifies the
+            // other person, so repeating their name wastes vertical space.
+            if !isFromMe && !message.isPrivate {
+                Text(message.sender)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(palette.secondary)
+                    .padding(.horizontal, 4)
+            }
+
+            HStack(alignment: .bottom, spacing: 0) {
+                if isFromMe {
+                    Spacer(minLength: 42)
+                }
+
+                VStack(alignment: isFromMe ? .trailing : .leading, spacing: 5) {
+                    HStack(alignment: .firstTextBaseline, spacing: 5) {
+                        if message.isPrivate {
+                            Image(systemName: "lock.fill")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(isFromMe ? Color.white.opacity(0.82) : Color.orange)
+                                .accessibilityHidden(true)
+                        }
+                        if conversationUIModel.showsVerifiedSeal(for: message) {
+                            Image(systemName: "checkmark.seal.fill")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(isFromMe ? Color.white.opacity(0.88) : Color.green)
+                                .accessibilityLabel(
+                                    String(localized: "content.accessibility.verified_sender", defaultValue: "Verified sender", comment: "Accessibility label for the seal next to a verified peer's name on a private message")
+                                )
+                        }
+                        if message.isBridged {
+                            Image(systemName: "network")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(isFromMe ? Color.white.opacity(0.82) : Color.cyan)
+                                .accessibilityLabel(
+                                    String(localized: "content.accessibility.bridged_message", defaultValue: "Arrived across a mesh bridge", comment: "Accessibility label for the glyph marking a message that arrived across a mesh bridge")
+                                )
+                        }
+
+                        Text(message.content)
+                            .font(.body)
+                            .foregroundStyle(isFromMe ? Color.white : palette.primary)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .lineLimit(isLong && !isExpanded ? TransportConfig.uiLongMessageLineLimit : nil)
+                            .textSelection(.enabled)
+                    }
+
+                    if isLong {
+                        Button(isExpanded ? "content.message.show_less" : "content.message.show_more") {
+                            if isExpanded {
+                                expandedMessageIDs.remove(message.id)
+                            } else {
+                                expandedMessageIDs.insert(message.id)
+                            }
+                        }
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(isFromMe ? Color.white.opacity(0.9) : palette.accentBlue)
+                        .buttonStyle(.plain)
+                    }
+
+                    if !lightningLinks.isEmpty || !cashuLinks.isEmpty {
+                        HStack(spacing: 6) {
+                            ForEach(lightningLinks, id: \.self) { link in
+                                PaymentChipView(paymentType: .lightning(link))
+                            }
+                            ForEach(cashuLinks, id: \.self) { link in
+                                PaymentChipView(paymentType: .cashu(link))
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 13)
+                .padding(.vertical, 9)
+                .background(
+                    BTChatBubbleShape(isOutgoing: isFromMe)
+                        .fill(isFromMe ? palette.accent : incomingBubbleColor)
+                )
+                .overlay(
+                    BTChatBubbleShape(isOutgoing: isFromMe)
+                        .stroke(isFromMe ? Color.white.opacity(0.14) : palette.divider.opacity(0.75), lineWidth: 0.6)
+                )
+
+                if !isFromMe {
+                    Spacer(minLength: 42)
+                }
+            }
+
+            if message.isPrivate && isFromMe && deliveryStatus != .notSentYet {
+                HStack(spacing: 4) {
+                    Button {
+                        showDeliveryDetail.toggle()
+                    } label: {
+                        DeliveryStatusView(status: deliveryStatus)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint(
+                        String(localized: "content.accessibility.delivery_detail_hint", comment: "Accessibility hint for the delivery status glyph explaining a tap reveals details")
+                    )
+                }
+                .padding(.trailing, 4)
+            }
+
+            if message.isPrivate && isFromMe && deliveryStatus != .notSentYet {
+                if case .failed = deliveryStatus {
+                    Text(verbatim: deliveryStatus.bitchatDescription)
+                        .font(.caption)
+                        .foregroundStyle(palette.alertRed)
+                        .multilineTextAlignment(.trailing)
+                } else if showDeliveryDetail {
+                    Text(verbatim: deliveryStatus.bitchatDescription)
+                        .font(.caption)
+                        .foregroundStyle(palette.secondary)
+                        .multilineTextAlignment(.trailing)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: isFromMe ? .trailing : .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 3)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            String(
+                format: String(localized: "content.accessibility.message", defaultValue: "%@ says %@", comment: "Accessibility label for a chat message, naming the sender and message content"),
+                locale: .current,
+                message.sender,
+                message.content
+            )
+        )
+    }
+
+    private var incomingBubbleColor: Color {
+        colorScheme == .dark ? Color.white.opacity(0.12) : Color.black.opacity(0.075)
+    }
+}
+
+/// A compact iMessage-inspired bubble with a small directional tail. The
+/// shape is intentionally kept local to BT Chat so the existing matrix
+/// renderer and message semantics remain unchanged.
+private struct BTChatBubbleShape: Shape {
+    let isOutgoing: Bool
+
+    func path(in rect: CGRect) -> Path {
+        let tailWidth: CGFloat = 8
+        let tailHeight: CGFloat = 6
+        let bodyRect = CGRect(
+            x: isOutgoing ? rect.minX : rect.minX + tailWidth,
+            y: rect.minY,
+            width: max(0, rect.width - tailWidth),
+            height: max(0, rect.height - tailHeight)
+        )
+        let cornerRadius: CGFloat = 18
+        var path = Path(roundedRect: bodyRect, cornerRadius: cornerRadius, style: .continuous)
+
+        if isOutgoing {
+            path.move(to: CGPoint(x: bodyRect.maxX - 18, y: bodyRect.maxY - 2))
+            path.addQuadCurve(
+                to: CGPoint(x: rect.maxX, y: rect.maxY),
+                control: CGPoint(x: bodyRect.maxX - 2, y: bodyRect.maxY + 2)
+            )
+            path.addQuadCurve(
+                to: CGPoint(x: bodyRect.maxX - 8, y: bodyRect.maxY - 10),
+                control: CGPoint(x: bodyRect.maxX - 4, y: bodyRect.maxY - 3)
+            )
+        } else {
+            path.move(to: CGPoint(x: bodyRect.minX + 18, y: bodyRect.maxY - 2))
+            path.addQuadCurve(
+                to: CGPoint(x: rect.minX, y: rect.maxY),
+                control: CGPoint(x: bodyRect.minX + 2, y: bodyRect.maxY + 2)
+            )
+            path.addQuadCurve(
+                to: CGPoint(x: bodyRect.minX + 8, y: bodyRect.maxY - 10),
+                control: CGPoint(x: bodyRect.minX + 4, y: bodyRect.maxY - 3)
+            )
+        }
+
+        return path
     }
 }
 

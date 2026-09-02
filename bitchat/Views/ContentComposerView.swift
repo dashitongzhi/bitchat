@@ -12,6 +12,7 @@ struct ContentComposerView: View {
     @EnvironmentObject private var locationChannelsModel: LocationChannelsModel
     @ObservedObject private var bridgeService = BridgeService.shared
     @Environment(\.appTheme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
     @ThemedPalette private var palette
 
     @Binding var messageText: String
@@ -111,10 +112,22 @@ struct ContentComposerView: View {
                     isTextFieldFocused.wrappedValue = true
                 }
                 .padding(.vertical, theme.usesGlassChrome ? 8 : 4)
-                .padding(.horizontal, 6)
-                .themedInputBackground()
-                .modifier(FocusEffectDisabledModifier())
+                .padding(.horizontal, theme.usesGlassChrome ? 13 : 6)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .themedInputBackground()
+                .background {
+                    if theme.usesGlassChrome {
+                        Capsule(style: .continuous)
+                            .fill(Color.primary.opacity(colorScheme == .dark ? 0.16 : 0.07))
+                    }
+                }
+                .overlay {
+                    if theme.usesGlassChrome {
+                        Capsule(style: .continuous)
+                            .stroke(palette.divider.opacity(0.7), lineWidth: 0.7)
+                    }
+                }
+                .modifier(FocusEffectDisabledModifier())
                 .onChange(of: messageText) { newValue in
                     autocompleteDebounceTimer?.invalidate()
                     autocompleteDebounceTimer = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: false) { _ in
@@ -258,8 +271,8 @@ private extension ContentComposerView {
 
     var attachmentButton: some View {
         #if os(iOS)
-        Image(systemName: "camera.circle.fill")
-            .font(.bitchatSystem(size: 24))
+        Image(systemName: theme.usesGlassChrome ? "plus.circle.fill" : "camera.circle.fill")
+            .font(.system(size: theme.usesGlassChrome ? 25 : 24, weight: .medium))
             .foregroundColor(composerAccentColor)
             .frame(width: 36, height: 36)
             .contentShape(Circle())

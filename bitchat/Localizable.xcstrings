@@ -31094,7 +31094,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "erases all messages, keys, and identity. triple-tapping the bitchat/ logo does the same."
+            "value" : "erases all messages, keys, and identity. triple-tapping the BT Chat logo does the same."
           }
         },
         "es" : {
@@ -31244,13 +31244,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "清除所有消息、密钥和身份。连点三次 bitchat/ 标志效果相同。"
+            "value" : "清除所有消息、密钥和身份。连点三次 BT Chat 标志效果相同。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "清除所有訊息、金鑰和身分。連點三次 bitchat/ 標誌效果相同。"
+            "value" : "清除所有訊息、金鑰和身分。連點三次 BT Chat 標誌效果相同。"
           }
         }
       }
@@ -55421,7 +55421,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "tap the channel name above to switch · tap bitchat/ for help"
+            "value" : "tap the channel name above to switch · tap BT Chat for help"
           }
         },
         "es" : {
@@ -55571,13 +55571,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "轻点上方频道名切换 · 轻点 bitchat/ 获取帮助"
+            "value" : "轻点上方频道名切换 · 轻点 BT Chat 获取帮助"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "needs_review",
-            "value" : "輕點上方頻道名稱切換 · 輕點 bitchat/ 取得協助"
+            "value" : "輕點上方頻道名稱切換 · 輕點 BT Chat 取得協助"
           }
         }
       }

@@ -42,8 +42,9 @@ struct ContentHeaderView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            Text(verbatim: "bitchat/")
-                .bitchatFont(size: 18, weight: .medium)
+                Text(verbatim: "BT Chat")
+                    .padding(.trailing, 4)
+                .bitchatFont(size: theme.usesGlassChrome ? 19 : 18, weight: .semibold)
                 .lineLimit(1)
                 .foregroundColor(palette.primary)
                 // When icons crowd the header, squeeze the nickname first
@@ -111,6 +112,20 @@ struct ContentHeaderView: View {
             }
 
             Spacer()
+
+            Button(action: { appChromeModel.presentAppInfo() }) {
+                Image(systemName: "gearshape.fill")
+                    .font(.system(size: theme.usesGlassChrome ? 15 : 12, weight: .medium))
+                    .foregroundColor(palette.secondary.opacity(0.9))
+                    .headerTapTarget()
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(
+                String(localized: "content.accessibility.settings", defaultValue: "Settings", comment: "Accessibility label for the settings button in the chat header")
+            )
+            .accessibilityHint(
+                String(localized: "content.accessibility.settings_hint", defaultValue: "Opens chat and connection settings", comment: "Accessibility hint for the settings button in the chat header")
+            )
 
             let countAndColor = channelPeopleCountAndColor()
             let headerCountColor = countAndColor.1
@@ -255,12 +270,18 @@ struct ContentHeaderView: View {
                     }()
 
                     Text(badgeText)
-                        .bitchatFont(size: 14)
+                        .bitchatFont(size: theme.usesGlassChrome ? 13 : 14, weight: theme.usesGlassChrome ? .medium : .regular)
                         .foregroundColor(badgeColor)
                         .lineLimit(headerLineLimit)
                         .fixedSize(horizontal: true, vertical: false)
                         .layoutPriority(2)
                         .padding(.horizontal, 6)
+                        .background {
+                            if theme.usesGlassChrome {
+                                Capsule(style: .continuous)
+                                    .fill(badgeColor.opacity(0.12))
+                            }
+                        }
                         .frame(maxHeight: .infinity)
                         .contentShape(Rectangle())
                         .accessibilityLabel(
@@ -374,7 +395,7 @@ struct ContentHeaderView: View {
                 pendingShareGeohash = nil
             }
         } message: {
-            Text(String(localized: "channel.share.precision_warning.message", defaultValue: "this channel covers a small area. an invite sent over sms or imessage is visible to the carrier and both handsets — it discloses interest in that place, not only that someone uses bitchat.", comment: "Body of the confirmation before sharing a fine-precision geohash invite"))
+            Text(String(localized: "channel.share.precision_warning.message", defaultValue: "this channel covers a small area. an invite sent over sms or imessage is visible to the carrier and both handsets — it discloses interest in that place, not only that someone uses BT Chat.", comment: "Body of the confirmation before sharing a fine-precision geohash invite"))
         }
         .sheet(item: $activeSharePayload) { payload in
             ShareActivityView(text: payload.text)
