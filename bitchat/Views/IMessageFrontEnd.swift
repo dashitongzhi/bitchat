@@ -10,6 +10,10 @@
 
 import BitFoundation
 import SwiftUI
+#if os(iOS)
+import PhotosUI
+import UIKit
+#endif
 
 struct IMessageContactListView: View {
     @EnvironmentObject private var appChromeModel: AppChromeModel
@@ -372,6 +376,7 @@ private struct IMessageContactEntry: Identifiable {
 
 private struct IMessageContactRow: View {
     let entry: IMessageContactEntry
+    @ObservedObject private var appearanceStore = IMessageContactAppearanceStore.shared
 
     private static let relativeFormatter: RelativeDateTimeFormatter = {
         let formatter = RelativeDateTimeFormatter()
@@ -380,17 +385,20 @@ private struct IMessageContactRow: View {
     }()
 
     var body: some View {
+        let contactTitle = appearanceStore.displayName(for: entry.id, fallback: entry.displayName)
+
         HStack(spacing: 12) {
             IMessageFrontEndAvatar(
-                name: entry.displayName,
+                name: contactTitle,
                 tint: entry.tint,
                 size: 48,
-                statusColor: entry.statusColor
+                statusColor: entry.statusColor,
+                imageData: appearanceStore.avatarData(for: entry.id)
             )
 
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 5) {
-                    Text(entry.displayName)
+                    Text(contactTitle)
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
@@ -437,7 +445,7 @@ private struct IMessageContactRow: View {
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
-            entry.displayName + ", " + entry.preview + (entry.unreadCount > 0 ? ", 未读" : "")
+            contactTitle + ", " + entry.preview + (entry.unreadCount > 0 ? ", 未读" : "")
         )
         .accessibilityHint(
             String(
@@ -520,10 +528,14 @@ private struct IMessageContactListBackground: View {
 }
 
 struct IMessageReferenceChatHeader: View {
-    @EnvironmentObject private var appChromeModel: AppChromeModel
-    @EnvironmentObject private var privateConversationModel: PrivateConversationModel
     @EnvironmentObject private var privateInboxModel: PrivateInboxModel
     @Environment(\.colorScheme) private var colorScheme
+    @ObservedObject private var appearanceStore: IMessageContactAppearanceStore
+    @State private var isRemarkEditorPresented = false
+    @State private var remarkDraft = ""
+    #if os(iOS)
+    @State private var selectedAvatarItem: PhotosPickerItem?
+    #endif
 
     let headerState: PrivateConversationHeaderState
     let onBack: () -> Void
@@ -537,6 +549,7 @@ struct IMessageReferenceChatHeader: View {
         self.headerState = headerState
         self.onBack = onBack
         self.unreadCountOverride = unreadCountOverride
+        _appearanceStore = ObservedObject(wrappedValue: IMessageContactAppearanceStore.shared)
     }
 
     private var foreground: Color {
@@ -587,82 +600,26 @@ struct IMessageReferenceChatHeader: View {
                     )
                 )
 
-                Spacer()
-
-                Menu {
-                    if headerState.supportsFavoriteToggle {
-                        Button {
-                            privateConversationModel.toggleFavoriteForSelectedConversation()
-                        } label: {
-                            Label(
-                                headerState.isFavorite ? "取消置顶" : "置顶联系人",
-                                systemImage: headerState.isFavorite ? "pin.slash" : "pin"
-                            )
-                        }
-                    }
-
-                    if !headerState.isGroupConversation {
-                        Button {
-                            appChromeModel.showFingerprint(for: headerState.headerPeerID)
-                        } label: {
-                            Label("验证联系人", systemImage: "checkmark.seal")
-                        }
-                    }
-
-                    Button {
-                        appChromeModel.presentAppInfo()
-                    } label: {
-                        Label("设置", systemImage: "gearshape")
-                    }
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundStyle(foreground.opacity(0.86))
-                        .frame(width: 44, height: 44)
-                        .background(
-                            colorScheme == .dark ? Color.white.opacity(0.12) : Color.white.opacity(0.78),
-                            in: Circle()
-                        )
-                        .overlay(
-                            Circle().stroke(
-                                colorScheme == .dark ? Color.white.opacity(0.16) : Color.black.opacity(0.1),
-                                lineWidth: 0.8
-                            )
-                        )
-                        .imessageLiquidGlassBackground(cornerRadius: 22, interactive: true)
-                }
-                .menuStyle(.borderlessButton)
-                .accessibilityLabel(
-                    String(
-                        localized: "content.accessibility.chat_actions",
-                        defaultValue: "聊天操作",
-                        comment: "Accessibility label for the private chat actions menu"
-                    )
-                )
-                .shadow(color: .black.opacity(colorScheme == .dark ? 0.25 : 0.08), radius: 14, y: 8)
+                Spacer(minLength: 0)
             }
             .padding(.horizontal, 16)
 
             VStack(spacing: -3) {
-                IMessageFrontEndAvatar(
-                    name: headerState.displayName,
-                    tint: headerState.isGroupConversation ? .purple : .blue,
-                    size: 44,
-                    statusColor: statusColor
-                )
-                .overlay(
-                    Circle().stroke(
-                        colorScheme == .dark ? Color.white.opacity(0.45) : Color.black.opacity(0.12),
-                        lineWidth: 1
-                    )
-                )
-                .shadow(color: .black.opacity(colorScheme == .dark ? 0.3 : 0.12), radius: 16, y: 8)
+                avatarPicker
+                    .zIndex(1)
 
-                Text(headerState.displayName)
+                Button(action: beginRemarkEdit) {
+                    HStack(spacing: 5) {
+                        Text(contactTitle)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.65)
+
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 9, weight: .bold))
+                    }
                     .font(.system(size: 11.5, weight: .semibold))
                     .foregroundStyle(titleColor)
-                    .lineLimit(1)
-                    .padding(.horizontal, 30)
+                    .padding(.horizontal, 27)
                     .padding(.vertical, 7)
                     .background(
                         colorScheme == .dark ? Color.white.opacity(0.14) : Color.white.opacity(0.82),
@@ -675,6 +632,9 @@ struct IMessageReferenceChatHeader: View {
                         )
                     )
                     .imessageLiquidGlassBackground(cornerRadius: 17)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("修改备注，当前为 \(contactTitle)")
             }
             .frame(maxWidth: 210)
             .offset(y: 6)
@@ -692,6 +652,67 @@ struct IMessageReferenceChatHeader: View {
             )
             .ignoresSafeArea(edges: .top)
         )
+        .alert("修改备注", isPresented: $isRemarkEditorPresented) {
+            TextField("备注名称", text: $remarkDraft)
+            Button("取消", role: .cancel) { }
+            Button("保存") {
+                appearanceStore.saveRemark(remarkDraft, for: appearanceKey)
+            }
+        } message: {
+            Text("备注仅在本机显示")
+        }
+    }
+
+    @ViewBuilder
+    private var avatarPicker: some View {
+        #if os(iOS)
+        PhotosPicker(selection: $selectedAvatarItem, matching: .images) {
+            headerAvatar
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("更换头像")
+        .onChange(of: selectedAvatarItem) { item in
+            guard let item else { return }
+            Task { @MainActor in
+                if let data = try? await item.loadTransferable(type: Data.self) {
+                    appearanceStore.saveAvatar(data, for: appearanceKey)
+                }
+                selectedAvatarItem = nil
+            }
+        }
+        #else
+        headerAvatar
+        #endif
+    }
+
+    private var headerAvatar: some View {
+        IMessageFrontEndAvatar(
+            name: contactTitle,
+            tint: headerState.isGroupConversation ? .purple : .blue,
+            size: 56,
+            statusColor: statusColor,
+            imageData: appearanceStore.avatarData(for: appearanceKey)
+        )
+        .overlay(
+            Circle().stroke(
+                colorScheme == .dark ? Color.white.opacity(0.45) : Color.black.opacity(0.12),
+                lineWidth: 1
+            )
+        )
+        .shadow(color: .black.opacity(colorScheme == .dark ? 0.3 : 0.12), radius: 16, y: 8)
+    }
+
+    private func beginRemarkEdit() {
+        remarkDraft = contactTitle
+        isRemarkEditorPresented = true
+    }
+
+    private var appearanceKey: String {
+        headerState.conversationPeerID.id
+    }
+
+    private var contactTitle: String {
+        appearanceStore.displayName(for: appearanceKey, fallback: headerState.displayName)
     }
 
     private var unreadCount: Int {
@@ -843,22 +864,25 @@ private struct IMessageFrontEndAvatar: View {
     let tint: Color
     let size: CGFloat
     let statusColor: Color?
+    let imageData: Data?
+
+    init(
+        name: String,
+        tint: Color,
+        size: CGFloat,
+        statusColor: Color?,
+        imageData: Data? = nil
+    ) {
+        self.name = name
+        self.tint = tint
+        self.size = size
+        self.statusColor = statusColor
+        self.imageData = imageData
+    }
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
-            Circle()
-                .fill(
-                    LinearGradient(
-                        colors: [tint.opacity(0.96), tint.opacity(0.58)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .overlay(
-                    Text(initials)
-                        .font(.system(size: size * 0.38, weight: .semibold, design: .rounded))
-                        .foregroundStyle(.white)
-                )
+            avatarContent
 
             if let statusColor {
                 Circle()
@@ -872,6 +896,39 @@ private struct IMessageFrontEndAvatar: View {
         .accessibilityLabel(name)
     }
 
+    @ViewBuilder
+    private var avatarContent: some View {
+        #if os(iOS)
+        if let imageData, let image = UIImage(data: imageData) {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFill()
+                .frame(width: size, height: size)
+                .clipShape(Circle())
+        } else {
+            initialsAvatar
+        }
+        #else
+        initialsAvatar
+        #endif
+    }
+
+    private var initialsAvatar: some View {
+        Circle()
+            .fill(
+                LinearGradient(
+                    colors: [tint.opacity(0.96), tint.opacity(0.58)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .overlay(
+                Text(initials)
+                    .font(.system(size: size * 0.38, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white)
+            )
+    }
+
     private var initials: String {
         let cleaned = name
             .replacingOccurrences(of: "#", with: "")
@@ -882,6 +939,51 @@ private struct IMessageFrontEndAvatar: View {
             return String(parts.prefix(2).compactMap(\.first)).uppercased()
         }
         return String(cleaned.prefix(2)).uppercased()
+    }
+}
+
+private final class IMessageContactAppearanceStore: ObservableObject {
+    static let shared = IMessageContactAppearanceStore()
+
+    @Published private(set) var updateToken = UUID()
+
+    private let defaults: UserDefaults
+    private let keyPrefix = "bitchat.imessage.contact"
+
+    private init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
+    func displayName(for peerID: String, fallback: String) -> String {
+        guard let saved = defaults.string(forKey: key("remark", peerID: peerID)) else {
+            return fallback
+        }
+        let trimmed = saved.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? fallback : trimmed
+    }
+
+    func saveRemark(_ value: String, for peerID: String) {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        let storageKey = key("remark", peerID: peerID)
+        if trimmed.isEmpty {
+            defaults.removeObject(forKey: storageKey)
+        } else {
+            defaults.set(trimmed, forKey: storageKey)
+        }
+        updateToken = UUID()
+    }
+
+    func avatarData(for peerID: String) -> Data? {
+        defaults.data(forKey: key("avatar", peerID: peerID))
+    }
+
+    func saveAvatar(_ data: Data, for peerID: String) {
+        defaults.set(data, forKey: key("avatar", peerID: peerID))
+        updateToken = UUID()
+    }
+
+    private func key(_ kind: String, peerID: String) -> String {
+        "\(keyPrefix).\(kind).\(peerID)"
     }
 }
 
@@ -915,22 +1017,36 @@ struct IMessageFrontEndPreviewChatView: View {
             IMessageReferenceChatBackdrop()
 
             ScrollView {
-                VStack(alignment: .trailing, spacing: 7) {
+                VStack(alignment: .leading, spacing: 7) {
                     Text("今天 3:59 PM")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(colorScheme == .dark ? .white.opacity(0.48) : .secondary)
                         .frame(maxWidth: .infinity)
                         .padding(.bottom, 6)
 
-                    IMessagePreviewBubble(isOutgoing: false, text: "他这个验证逻辑")
-                    IMessagePreviewBubble(isOutgoing: true, text: "我之前的内购退号不影响")
-                    IMessagePreviewBubble(isOutgoing: true, text: "消息会保持端到端加密。")
+                    HStack {
+                        IMessagePreviewBubble(isOutgoing: false, text: "他这个验证逻辑")
+                        Spacer(minLength: 0)
+                    }
 
-                    Text("已读 10:59 AM")
-                        .font(.system(size: 10.5, weight: .medium))
-                        .foregroundStyle(colorScheme == .dark ? .white.opacity(0.62) : .secondary)
-                        .padding(.trailing, 8)
-                        .padding(.top, -2)
+                    HStack {
+                        Spacer(minLength: 0)
+                        IMessagePreviewBubble(isOutgoing: true, text: "我之前的内购退号不影响")
+                    }
+
+                    HStack {
+                        Spacer(minLength: 0)
+                        IMessagePreviewBubble(isOutgoing: true, text: "消息会保持端到端加密。")
+                    }
+
+                    HStack {
+                        Spacer(minLength: 0)
+                        Text("已读 10:59 AM")
+                            .font(.system(size: 10.5, weight: .medium))
+                            .foregroundStyle(colorScheme == .dark ? .white.opacity(0.62) : .secondary)
+                            .padding(.trailing, 8)
+                            .padding(.top, -2)
+                    }
                 }
                 .padding(.horizontal, 10)
                 .padding(.top, 92)
