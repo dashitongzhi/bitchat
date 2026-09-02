@@ -758,18 +758,25 @@ struct IMessageReferenceChatBackdrop: View {
     }
 }
 
+enum IMessageLiquidGlassStyle: Equatable {
+    case regular
+    case clear
+}
+
 struct IMessageLiquidGlassBackgroundModifier: ViewModifier {
     let cornerRadius: CGFloat
     let interactive: Bool
+    let style: IMessageLiquidGlassStyle
 
     @ViewBuilder
     func body(content: Content) -> some View {
         #if compiler(>=6.2)
         if #available(iOS 26.0, macOS 26.0, *) {
+            let effect: Glass = style == .clear ? .clear : .regular
             if interactive {
-                content.glassEffect(.regular.interactive(), in: .rect(cornerRadius: cornerRadius))
+                content.glassEffect(effect.interactive(), in: .rect(cornerRadius: cornerRadius))
             } else {
-                content.glassEffect(.regular, in: .rect(cornerRadius: cornerRadius))
+                content.glassEffect(effect, in: .rect(cornerRadius: cornerRadius))
             }
         } else {
             fallback(content)
@@ -782,22 +789,27 @@ struct IMessageLiquidGlassBackgroundModifier: ViewModifier {
     private func fallback(_ content: Content) -> some View {
         content
             .background(
-                .ultraThinMaterial,
+                style == .clear ? .thinMaterial : .ultraThinMaterial,
                 in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(Color.white.opacity(0.22), lineWidth: 0.7)
+                    .stroke(Color.white.opacity(style == .clear ? 0.22 : 0.34), lineWidth: 0.7)
             )
     }
 }
 
 extension View {
-    func imessageLiquidGlassBackground(cornerRadius: CGFloat, interactive: Bool = false) -> some View {
+    func imessageLiquidGlassBackground(
+        cornerRadius: CGFloat,
+        interactive: Bool = false,
+        style: IMessageLiquidGlassStyle = .regular
+    ) -> some View {
         modifier(
             IMessageLiquidGlassBackgroundModifier(
                 cornerRadius: cornerRadius,
-                interactive: interactive
+                interactive: interactive,
+                style: style
             )
         )
     }
@@ -945,43 +957,8 @@ private struct IMessagePreviewComposer: View {
     @Binding var draft: String
     @Environment(\.colorScheme) private var colorScheme
 
-    private let tools: [(String, String?)] = [
-        ("快捷回复", nil),
-        ("WeChat液态Glass.ai", nil),
-        ("拍摄", "camera.fill"),
-        ("文件", "folder.fill"),
-        ("添加", "plus")
-    ]
-
     var body: some View {
-        VStack(spacing: 7) {
-            HStack(spacing: 12) {
-                ForEach(Array(tools.enumerated()), id: \.offset) { index, tool in
-                    HStack(spacing: 5) {
-                        if let symbol = tool.1 {
-                            Image(systemName: symbol)
-                                .font(.system(size: index == tools.count - 1 ? 19 : 17, weight: .semibold))
-                        }
-                        Text(tool.0)
-                            .font(.system(size: index == 1 ? 13.5 : 15.5, weight: .bold, design: .rounded))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.82)
-                    }
-                    .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.88) : Color.black.opacity(0.72))
-                    .padding(.horizontal, index < 2 ? 8 : 9)
-                    .frame(minHeight: 28)
-                    .overlay(
-                        Capsule().stroke(
-                            colorScheme == .dark ? Color.white.opacity(0.20) : Color.black.opacity(0.12),
-                            lineWidth: 0.7
-                        )
-                    )
-                    .imessageLiquidGlassBackground(cornerRadius: 14, interactive: true)
-                }
-            }
-            .frame(maxWidth: .infinity)
-
-            HStack(alignment: .center, spacing: 9) {
+        HStack(alignment: .center, spacing: 9) {
                 Button {} label: {
                     Image(systemName: "plus")
                         .font(.system(size: 27, weight: .medium))
@@ -993,7 +970,7 @@ private struct IMessagePreviewComposer: View {
                                 lineWidth: 0.8
                             )
                         )
-                        .imessageLiquidGlassBackground(cornerRadius: 24, interactive: true)
+                        .imessageLiquidGlassBackground(cornerRadius: 24, interactive: true, style: .clear)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("添加附件")
@@ -1039,7 +1016,7 @@ private struct IMessagePreviewComposer: View {
                             lineWidth: 0.8
                         )
                 )
-                .imessageLiquidGlassBackground(cornerRadius: 24, interactive: true)
+                .imessageLiquidGlassBackground(cornerRadius: 24, interactive: true, style: .clear)
 
                 Image(systemName: "speaker.wave.2")
                     .font(.system(size: 25, weight: .medium))
@@ -1051,25 +1028,12 @@ private struct IMessagePreviewComposer: View {
                             lineWidth: 0.9
                         )
                     )
-                    .imessageLiquidGlassBackground(cornerRadius: 24, interactive: true)
+                    .imessageLiquidGlassBackground(cornerRadius: 24, interactive: true, style: .clear)
             }
             .frame(minHeight: 54)
-        }
         .padding(.horizontal, 17)
         .padding(.top, 8)
         .padding(.bottom, 12)
-        .background {
-            if colorScheme == .dark {
-                Rectangle().fill(.ultraThinMaterial)
-            } else {
-                Rectangle().fill(Color.white.opacity(0.74))
-            }
-        }
-        .overlay(alignment: .top) {
-            Rectangle()
-                .fill(colorScheme == .dark ? Color.white.opacity(0.18) : Color.black.opacity(0.08))
-                .frame(height: 0.6)
-        }
     }
 }
 

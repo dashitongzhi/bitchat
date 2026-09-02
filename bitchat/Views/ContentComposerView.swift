@@ -217,86 +217,75 @@ struct ContentComposerView: View {
                 iMessageComposerStack
             }
         }
-        .padding(.horizontal, 9)
-        .padding(.top, 5)
-        .padding(.bottom, 7)
-        .background(.ultraThinMaterial)
-        .overlay(alignment: .top) {
-            Rectangle()
-                .fill(Color.white.opacity(0.22))
-                .frame(height: 0.6)
-        }
         .onDisappear {
             autocompleteDebounceTimer?.invalidate()
         }
     }
 
     private var iMessageComposerStack: some View {
-        VStack(spacing: 7) {
-            iMessageQuickToolStrip
-
-            HStack(alignment: .center, spacing: 9) {
-                if conversationUIModel.canSendMediaInCurrentContext {
-                    attachmentButton
-                }
-
-                HStack(alignment: .center, spacing: 10) {
-                    iMessageTextField
-                    iMessageTrailingButton
-                }
-                .frame(height: 48)
-                .padding(.trailing, 6)
-                .overlay(
-                    Capsule(style: .continuous)
-                        .stroke(
-                            colorScheme == .dark ? Color.white.opacity(0.22) : Color.black.opacity(0.12),
-                            lineWidth: 0.8
-                        )
-                )
-                .imessageLiquidGlassBackground(cornerRadius: 24, interactive: true)
-
-                iMessageVoiceButton
+        HStack(alignment: .center, spacing: 9) {
+            if conversationUIModel.canSendMediaInCurrentContext {
+                iMessageAttachmentButton
             }
-            .frame(minHeight: 54)
+
+            HStack(alignment: .center, spacing: 10) {
+                iMessageTextField
+                iMessageTrailingButton
+            }
+            .frame(height: 48)
+            .padding(.trailing, 6)
+            .overlay(
+                Capsule(style: .continuous)
+                    .stroke(
+                        colorScheme == .dark ? Color.white.opacity(0.22) : Color.black.opacity(0.12),
+                        lineWidth: 0.8
+                    )
+            )
+            .imessageLiquidGlassBackground(cornerRadius: 24, interactive: true, style: .clear)
+
+            iMessageVoiceButton
         }
+        .frame(minHeight: 54)
+        .padding(.horizontal, 17)
+        .padding(.top, 8)
+        .padding(.bottom, 12)
     }
 
-    private var iMessageQuickToolStrip: some View {
-        let tools: [(String, String?)] = [
-            ("快捷回复", nil),
-            ("WeChat液态Glass.ai", nil),
-            ("拍摄", "camera.fill"),
-            ("文件", "folder.fill"),
-            ("添加", "plus")
-        ]
-
-        return HStack(spacing: 12) {
-            ForEach(Array(tools.enumerated()), id: \.offset) { index, tool in
-                HStack(spacing: 5) {
-                    if let symbol = tool.1 {
-                        Image(systemName: symbol)
-                            .font(.system(size: index == tools.count - 1 ? 19 : 17, weight: .semibold))
-                    }
-
-                    Text(tool.0)
-                        .font(.system(size: index == 1 ? 13.5 : 15.5, weight: .bold, design: .rounded))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.82)
-                }
-                .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.88) : Color.black.opacity(0.72))
-                .padding(.horizontal, index < 2 ? 8 : 9)
-                .frame(minHeight: 28)
-                .overlay(
-                    Capsule().stroke(
-                        colorScheme == .dark ? Color.white.opacity(0.20) : Color.black.opacity(0.12),
-                        lineWidth: 0.7
-                    )
-                )
-                .imessageLiquidGlassBackground(cornerRadius: 14, interactive: true)
-            }
+    @ViewBuilder
+    private var iMessageAttachmentButton: some View {
+        #if os(iOS)
+        Button {
+            imagePickerSourceType = .photoLibrary
+            showImagePicker = true
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 27, weight: .medium))
+                .foregroundStyle(colorScheme == .dark ? Color.white.opacity(0.88) : Color.black.opacity(0.84))
+                .frame(width: 48, height: 48)
+                .contentShape(Circle())
         }
-        .frame(maxWidth: .infinity)
-        .shadow(color: .black.opacity(colorScheme == .dark ? 0.20 : 0.08), radius: 5, y: 2)
+        .buttonStyle(.plain)
+        .overlay(
+            Circle().stroke(
+                colorScheme == .dark ? Color.white.opacity(0.24) : Color.black.opacity(0.12),
+                lineWidth: 0.9
+            )
+        )
+        .imessageLiquidGlassBackground(cornerRadius: 24, interactive: true, style: .clear)
+        .simultaneousGesture(
+            LongPressGesture(minimumDuration: 0.3)
+                .onEnded { _ in
+                    imagePickerSourceType = .camera
+                    showImagePicker = true
+                }
+        )
+        .accessibilityLabel(
+            String(localized: "content.accessibility.attach_photo", comment: "Accessibility label for the photo attachment button")
+        )
+        .accessibilityAddTraits(.isButton)
+        #else
+        attachmentButton
+        #endif
     }
 
     private var iMessageTrailingButton: some View {
@@ -348,7 +337,7 @@ struct ContentComposerView: View {
                 lineWidth: 0.9
             )
         )
-        .imessageLiquidGlassBackground(cornerRadius: 24, interactive: true)
+        .imessageLiquidGlassBackground(cornerRadius: 24, interactive: true, style: .clear)
         .shadow(color: .black.opacity(colorScheme == .dark ? 0.20 : 0.08), radius: 12, y: 6)
         .accessibilityLabel("语音消息")
         .accessibilityAddTraits(.isButton)
