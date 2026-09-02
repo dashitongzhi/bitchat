@@ -195,12 +195,6 @@ struct TextMessageView: View {
 
                 VStack(alignment: isFromMe ? .trailing : .leading, spacing: 5) {
                     HStack(alignment: .firstTextBaseline, spacing: 5) {
-                        if message.isPrivate {
-                            Image(systemName: "lock.fill")
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(isFromMe ? Color.white.opacity(0.82) : Color.orange)
-                                .accessibilityHidden(true)
-                        }
                         if conversationUIModel.showsVerifiedSeal(for: message) {
                             Image(systemName: "checkmark.seal.fill")
                                 .font(.caption2.weight(.semibold))
@@ -219,8 +213,9 @@ struct TextMessageView: View {
                         }
 
                         Text(message.content)
-                            .font(.body)
-                            .foregroundStyle(isFromMe ? Color.white : palette.primary)
+                            .font(.system(size: 16.5))
+                            .lineSpacing(1.5)
+                            .foregroundStyle(isFromMe ? privateOutgoingTextColor : privateIncomingTextColor)
                             .fixedSize(horizontal: false, vertical: true)
                             .lineLimit(isLong && !isExpanded ? TransportConfig.uiLongMessageLineLimit : nil)
                             .textSelection(.enabled)
@@ -254,12 +249,18 @@ struct TextMessageView: View {
                 .padding(.vertical, 9)
                 .background(
                     BTChatBubbleShape(isOutgoing: isFromMe, showsTail: showsBubbleTail)
-                        .fill(isFromMe ? palette.accent : incomingBubbleColor)
+                        .fill(isFromMe ? privateOutgoingBubbleColor : incomingBubbleColor)
                 )
                 .overlay(
                     BTChatBubbleShape(isOutgoing: isFromMe, showsTail: showsBubbleTail)
-                        .stroke(isFromMe ? Color.white.opacity(0.14) : palette.divider.opacity(0.75), lineWidth: 0.6)
+                        .stroke(
+                            isFromMe
+                                ? Color.white.opacity(0.14)
+                                : (colorScheme == .dark ? Color.white.opacity(0.12) : Color.black.opacity(0.10)),
+                            lineWidth: 0.6
+                        )
                 )
+                .frame(maxWidth: 298, alignment: isFromMe ? .trailing : .leading)
 
                 if !isFromMe {
                     Spacer(minLength: 42)
@@ -327,7 +328,21 @@ struct TextMessageView: View {
     }
 
     private var incomingBubbleColor: Color {
-        colorScheme == .dark ? Color.white.opacity(0.12) : Color.black.opacity(0.075)
+        colorScheme == .dark
+            ? Color(red: 0.08, green: 0.09, blue: 0.10).opacity(0.76)
+            : Color(red: 0.91, green: 0.91, blue: 0.93)
+    }
+
+    private var privateOutgoingBubbleColor: Color {
+        palette.accentBlue
+    }
+
+    private var privateOutgoingTextColor: Color {
+        .white
+    }
+
+    private var privateIncomingTextColor: Color {
+        colorScheme == .dark ? Color.white.opacity(0.88) : Color.black.opacity(0.86)
     }
 }
 

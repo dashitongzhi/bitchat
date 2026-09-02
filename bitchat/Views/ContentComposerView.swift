@@ -226,10 +226,14 @@ struct ContentComposerView: View {
                 .padding(.leading, 5)
                 .padding(.trailing, 3)
                 .padding(.vertical, 2)
+                .frame(minHeight: 48)
                 .background(.ultraThinMaterial, in: Capsule(style: .continuous))
                 .overlay(
                     Capsule(style: .continuous)
-                        .stroke(Color.white.opacity(0.34), lineWidth: 0.8)
+                        .stroke(
+                            colorScheme == .dark ? Color.white.opacity(0.34) : Color.black.opacity(0.12),
+                            lineWidth: 0.8
+                        )
                 )
             }
         }
@@ -254,13 +258,18 @@ struct ContentComposerView: View {
             prompt: Text(
                 privateConversationModel.selectedHeaderState == nil
                     ? placeholderText
-                    : String(localized: "content.input.placeholder.private.glass", defaultValue: "iMessage", comment: "iMessage-style private chat composer placeholder")
+                    : String(localized: "content.input.placeholder.private.glass", defaultValue: "Text Message · SMS", comment: "iMessage-style private chat composer placeholder")
             )
-            .foregroundColor(Color.white.opacity(0.72))
+            .foregroundColor(
+                colorScheme == .dark
+                    ? Color.white.opacity(0.72)
+                    : Color.black.opacity(0.30)
+            )
         )
         .textFieldStyle(.plain)
         .font(.body)
-        .foregroundColor(Color.white)
+        .foregroundColor(colorScheme == .dark ? Color.white : Color.black.opacity(0.86))
+        .tint(colorScheme == .dark ? .white : palette.accentBlue)
         .focused(isTextFieldFocused)
         .autocorrectionDisabled(true)
         #if os(iOS)
@@ -410,15 +419,26 @@ private extension ContentComposerView {
     }
 
     var composerAccentColor: Color {
-        privateConversationModel.selectedPeerID != nil ? Color.orange : palette.accent
+        if isPrivateGlassComposer {
+            return palette.accentBlue
+        }
+        return privateConversationModel.selectedPeerID != nil ? Color.orange : palette.accent
+    }
+
+    private var isPrivateGlassComposer: Bool {
+        theme.usesGlassChrome && privateConversationModel.selectedPeerID != nil
     }
 
     var attachmentButton: some View {
         #if os(iOS)
         Image(systemName: theme.usesGlassChrome ? "plus.circle.fill" : "camera.circle.fill")
-            .font(.system(size: theme.usesGlassChrome ? 25 : 24, weight: .medium))
-            .foregroundColor(theme.usesGlassChrome ? Color.white.opacity(0.92) : composerAccentColor)
-            .frame(width: 36, height: 36)
+            .font(.system(size: isPrivateGlassComposer ? 28 : (theme.usesGlassChrome ? 25 : 24), weight: .medium))
+            .foregroundColor(
+                theme.usesGlassChrome
+                    ? (colorScheme == .dark ? Color.white.opacity(0.92) : Color.black.opacity(0.84))
+                    : composerAccentColor
+            )
+            .frame(width: isPrivateGlassComposer ? 48 : 36, height: isPrivateGlassComposer ? 48 : 36)
             .background {
                 if theme.usesGlassChrome {
                     Circle()
@@ -502,9 +522,9 @@ private extension ContentComposerView {
     }
 
     var micButtonView: some View {
-        Image(systemName: "mic.circle.fill")
-            .font(.bitchatSystem(size: 24))
-            .foregroundColor(micColor)
+        Image(systemName: isPrivateGlassComposer ? "waveform" : "mic.circle.fill")
+            .font(.system(size: isPrivateGlassComposer ? 20 : 24, weight: .medium))
+            .foregroundColor(isPrivateGlassComposer ? (colorScheme == .dark ? .white.opacity(0.62) : .black.opacity(0.28)) : micColor)
             .modifier(PulsingOpacityModifier(active: busyTalker != nil && !voiceRecordingVM.state.isActive))
             .frame(width: 36, height: 36)
             .contentShape(Circle())

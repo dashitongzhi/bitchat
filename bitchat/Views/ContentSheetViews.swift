@@ -28,6 +28,7 @@ struct ContentPeopleSheetView: View {
     @EnvironmentObject private var verificationModel: VerificationModel
     @EnvironmentObject private var conversationUIModel: ConversationUIModel
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.appTheme) private var theme
 
     @Binding var showSidebar: Bool
     @Binding var messageText: String
@@ -165,11 +166,26 @@ struct ContentPeopleSheetView: View {
                     )
                     #endif
                 } else {
+                    #if os(iOS)
+                    if theme.usesGlassChrome {
+                        IMessageContactListView(
+                            showSidebar: $showSidebar,
+                            showVerifySheet: $showVerifySheet
+                        )
+                    } else {
+                        ContentPeopleListView(
+                            showSidebar: $showSidebar,
+                            showVerifySheet: $showVerifySheet,
+                            showsCloseButton: showsCloseButton
+                        )
+                    }
+                    #else
                     ContentPeopleListView(
                         showSidebar: $showSidebar,
                         showVerifySheet: $showVerifySheet,
                         showsCloseButton: showsCloseButton
                     )
+                    #endif
                 }
             }
             .navigationDestination(isPresented: Binding(
@@ -575,22 +591,25 @@ private struct ContentPrivateChatSheetView: View {
     }
 
     private var iMessageBody: some View {
-        VStack(spacing: 0) {
+        ZStack(alignment: .top) {
+            IMessageReferenceChatBackdrop()
+
+            conversationMessageList
+
             if let headerState = privateConversationModel.selectedHeaderState {
-                IMessageConversationHeader(
+                IMessageReferenceChatHeader(
                     headerState: headerState,
-                    headerHeight: headerHeight,
                     onBack: leaveConversation
                 )
             }
-
-            conversationMessageList
-                .background(IMessageChatBackdrop())
-
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
             composerView
         }
-        .background(IMessageChatBackdrop())
-        .foregroundColor(.white)
+        .background(IMessageReferenceChatBackdrop())
+        .foregroundColor(theme.usesGlassChrome ? .white : palette.primary)
+        .toolbar(.hidden, for: .navigationBar)
+        .navigationBarBackButtonHidden(true)
     }
 
     private var conversationMessageList: some View {
@@ -608,6 +627,7 @@ private struct ContentPrivateChatSheetView: View {
         )
         .themedSurface()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.top, theme.usesGlassChrome ? 92 : 0)
         // Keep the horizontal edge gesture on the timeline so the composer
         // retains its press-and-hold voice interaction.
         .highPriorityGesture(swipeToLeaveGesture)

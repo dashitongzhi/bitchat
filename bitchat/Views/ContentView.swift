@@ -112,6 +112,9 @@ struct ContentView: View {
     @State private var showSidebar = false
     #if os(iOS)
     @State private var selectedRootTab: ContentRootTab = .publicChannel
+    #if DEBUG
+    @State private var isIMessageFrontEndPreviewPresented = ProcessInfo.processInfo.arguments.contains("--bt-chat-imessage-preview")
+    #endif
     #endif
     @State private var selectedMessageSender: String?
     @State private var selectedMessageSenderID: PeerID?
@@ -189,8 +192,14 @@ struct ContentView: View {
     private var rootBluetoothAlertBinding: Binding<Bool> {
         Binding(
             get: {
-                scenePhase == .active
+                #if DEBUG && os(iOS)
+                let isPreview = isIMessageFrontEndPreviewPresented
+                #else
+                let isPreview = false
+                #endif
+                return scenePhase == .active
                     && appChromeModel.showBluetoothAlert
+                    && !isPreview
                     && !hasRootModalPresentation
             },
             set: { isPresented in
@@ -238,7 +247,20 @@ struct ContentView: View {
     }
 
     var body: some View {
-        rootContent
+        Group {
+            #if DEBUG && os(iOS)
+            if isIMessageFrontEndPreviewPresented {
+                IMessageFrontEndPreviewChatView()
+                    .environmentObject(appChromeModel)
+                    .environmentObject(privateConversationModel)
+                    .environmentObject(privateInboxModel)
+            } else {
+                rootContent
+            }
+            #else
+            rootContent
+            #endif
+        }
             .onAppear {
                 conversationUIModel.setCurrentColorScheme(colorScheme)
                 conversationUIModel.setCurrentTheme(appTheme)
@@ -248,6 +270,14 @@ struct ContentView: View {
                 appChromeModel.setPanicPreparation { [weak voiceRecordingVM] in
                     voiceRecordingVM?.panicWipe()
                 }
+                #if DEBUG && os(iOS)
+                if isIMessageFrontEndPreviewPresented {
+                    // The showcase route is visual-only; keep transport alerts
+                    // from covering the screenshot while the simulator has no
+                    // Bluetooth radio.
+                    appChromeModel.showBluetoothAlert = false
+                }
+                #endif
                 #if os(macOS)
                 DispatchQueue.main.async {
                     isNicknameFieldFocused = false
