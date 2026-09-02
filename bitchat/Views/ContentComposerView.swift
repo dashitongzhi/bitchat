@@ -31,7 +31,7 @@ struct ContentComposerView: View {
 
     @ViewBuilder
     var body: some View {
-        if theme.usesGlassChrome {
+        if theme.usesGlassChrome && privateConversationModel.selectedPeerID != nil {
             iMessageBody
         } else {
             legacyBody

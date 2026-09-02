@@ -36,7 +36,7 @@ struct TextMessageView: View {
 
     @ViewBuilder
     var body: some View {
-        if theme.usesGlassChrome {
+        if theme.usesGlassChrome && message.isPrivate {
             liquidGlassBody
                 // Keep the detail caption in sync with the mutable delivery
                 // state in the same way as the legacy renderer.
